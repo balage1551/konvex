@@ -21,7 +21,8 @@
   },
   "scripts": {
     "build": "vite build",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "konva": "^10.0.0",
