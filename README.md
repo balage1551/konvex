@@ -8,6 +8,19 @@ split into two published packages:
 | [`@balage1551/konvex`](packages/konvex) | Core: reactive shapes, stage/layer, scaling, world modes and zoom. |
 | [`@balage1551/konvex-editable-line`](packages/konvex-editable-line) | An interactively editable polyline (handles, projection assist, rubber-band selection, straighten/simplify, toolbar). |
 
+## Documentation
+
+- **[Getting started](docs/getting-started.md)** — install, first stage, the reactivity model, examples.
+- **[`@balage1551/konvex` reference](docs/konvex.md)** — shapes, the `<KonvexStageContainer>` component, scaling & zoom, value types.
+- **[`@balage1551/konvex-editable-line` reference](docs/konvex-editable-line.md)** — the editable polyline and its toolbar framework.
+
+## Install
+
+```bash
+npm install @balage1551/konvex vue konva
+npm install @balage1551/konvex-editable-line   # optional: the editable polyline
+```
+
 ## Development
 
 This is an npm-workspaces monorepo.

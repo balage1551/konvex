@@ -6,6 +6,11 @@ Every Konva node type is exposed as a class whose attributes are Vue refs, so
 shapes react to state the way the rest of your app does. Includes a `KonvexStage`
 component with scaling, world modes (free / elastic / clipped / bounded) and zoom.
 
+## Documentation
+
+- [Getting started](https://github.com/balage1551/konvex/blob/main/docs/getting-started.md)
+- [Full API reference](https://github.com/balage1551/konvex/blob/main/docs/konvex.md)
+
 ## Install
 
 ```bash
