@@ -1,0 +1,24 @@
+{
+  "name": "konvex-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Konvex — a reactive Vue 3 wrapper around Konva, plus an editable-line editor.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Balázs Vissy (balage1551)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/balage1551/konvex.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @balage1551/konvex && npm run build -w @balage1551/konvex-editable-line",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

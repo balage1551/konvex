@@ -1,0 +1,57 @@
+{
+  "name": "@balage1551/konvex",
+  "version": "0.1.0",
+  "description": "A reactive Vue 3 wrapper around Konva: shapes, stage/layer, scaling, world modes and zoom.",
+  "license": "MIT",
+  "author": "Balázs Vissy (balage1551)",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "peerDependencies": {
+    "konva": "^10.0.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "konva": "^10.0.9",
+    "typescript": "~5.9.3",
+    "vite": "~5.4.6",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-lib-inject-css": "^2.1.1",
+    "vue": "^3.5.22",
+    "vue-tsc": "^3.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/balage1551/konvex.git",
+    "directory": "packages/konvex"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "konva",
+    "vue",
+    "vue3",
+    "canvas",
+    "reactive",
+    "2d",
+    "graphics"
+  ]
+}
