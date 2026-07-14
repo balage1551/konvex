@@ -22,13 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NOTE: no `registry-url` here on purpose. Setting it makes setup-node write
+      # an .npmrc with `_authToken=${NODE_AUTH_TOKEN}`; with no token that expands
+      # to an empty credential, which npm treats as "auth already configured" and
+      # SKIPS the OIDC exchange — publishing then fails with a 404. Trusted
+      # publishing uses the default registry (registry.npmjs.org) anyway.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: 24
 
-      # Trusted publishing + provenance need npm >= 11.5.1; setup-node ships older.
-      - run: npm install -g npm@latest
+      # Trusted publishing needs npm >= 11.5.1; Node 24 ships a recent npm, and we
+      # upgrade to be sure. Print the version so the log proves which npm published.
+      - run: npm install -g npm@latest && npm --version
 
       - run: npm ci
 
