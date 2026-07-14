@@ -1,0 +1,27 @@
+{
+  "name": "@balage1551/konvex-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone Vite playground for developing and exercising the konvex packages.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@balage1551/konvex": "*",
+    "@balage1551/konvex-editable-line": "*",
+    "@mdi/font": "^7.4.47",
+    "konva": "^10.0.9",
+    "vue": "^3.5.22",
+    "vuetify": "^3.7.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "typescript": "~5.9.3",
+    "vite": "~5.4.6",
+    "vue-tsc": "^3.1.1"
+  }
+}

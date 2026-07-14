@@ -29,7 +29,12 @@ This is an npm-workspaces monorepo.
 npm install          # install & link all workspaces
 npm run build        # build core, then editable-line (order matters)
 npm run typecheck    # vue-tsc across all packages
+npm run dev -w @balage1551/konvex-sandbox   # interactive playground on :5180
 ```
+
+The **[`konvex-sandbox`](packages/konvex-sandbox)** package (private) is a
+standalone Vite app that exercises both libraries against their source — the dev
+loop for the packages.
 
 `@balage1551/konvex-editable-line` peer-depends on `@balage1551/konvex`; build
 the core first (the top-level `build` script does this for you).
