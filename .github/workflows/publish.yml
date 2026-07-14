@@ -31,20 +31,31 @@ jobs:
         with:
           node-version: 24
 
-      # Trusted publishing needs npm >= 11.5.1. Pin to the validated 11.x line
-      # (npm 12 is only days old); print the version so the log proves which ran.
-      - run: npm install -g npm@11 && npm --version
+      # Trusted publishing needs npm >= 11.5.1; pin to the validated 11.x line.
+      - run: npm install -g npm@11
 
       - run: npm ci
 
       # Builds core first, then editable-line (order matters — see root build script).
       - run: npm run build
 
-      # TEMP diagnostic: is the OIDC id-token env available to the job at all?
-      - run: 'echo "id-token env present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"'
-
-      # No NODE_AUTH_TOKEN: auth comes from the OIDC token via id-token: write.
-      # --provenance publishes a signed provenance attestation alongside each package.
-      # TEMP: verbose on the first publish to trace the registry OIDC exchange.
-      - run: npm publish -w @balage1551/konvex --provenance --access public --loglevel verbose
-      - run: npm publish -w @balage1551/konvex-editable-line --provenance --access public
+      # Publish each package, core first. Idempotent: a version already on the
+      # registry is skipped, so re-runs and partial retries are safe. No
+      # NODE_AUTH_TOKEN — auth is the OIDC token (id-token: write); --provenance
+      # attaches a signed build-provenance attestation.
+      - name: Publish @balage1551/konvex
+        run: |
+          v=$(node -p "require('./packages/konvex/package.json').version")
+          if npm view "@balage1551/konvex@$v" version >/dev/null 2>&1; then
+            echo "@balage1551/konvex@$v already published — skipping."
+          else
+            npm publish -w @balage1551/konvex --provenance --access public
+          fi
+      - name: Publish @balage1551/konvex-editable-line
+        run: |
+          v=$(node -p "require('./packages/konvex-editable-line/package.json').version")
+          if npm view "@balage1551/konvex-editable-line@$v" version >/dev/null 2>&1; then
+            echo "@balage1551/konvex-editable-line@$v already published — skipping."
+          else
+            npm publish -w @balage1551/konvex-editable-line --provenance --access public
+          fi
