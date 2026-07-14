@@ -34,6 +34,12 @@ npm run typecheck    # vue-tsc across all packages
 `@balage1551/konvex-editable-line` peer-depends on `@balage1551/konvex`; build
 the core first (the top-level `build` script does this for you).
 
+## Publishing
+
+Releases go to npm via OIDC **trusted publishing** from GitHub Actions (no stored
+token). See **[docs/publishing.md](docs/publishing.md)** for the one-time setup
+and the per-release flow.
+
 ## Peer dependencies
 
 Both packages declare `vue` (^3.5) and `konva` (^10) as peer dependencies.
