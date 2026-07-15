@@ -88,7 +88,8 @@
                       <br />
                       <span class="info muted"
                         >Points ({{ asEditableLine.pointInfos.value.length }}) — drag handles to move;
-                        Alt-hover to preview, Alt+click to insert/extend</span
+                        double-click to add/insert, Alt-hover to preview the projection (gestures in the
+                        EditableLine panel →)</span
                       >
                       <div class="pt-table-wrap">
                         <table class="pt-table">
@@ -217,6 +218,32 @@
                   scope: {{ projectionScope }}
                 </v-btn>
               </div>
+            </div>
+
+            <!-- Host-owned selection behaviour (applies to every object). -->
+            <div class="panel">
+              <div class="group-title">Selection (host)</div>
+              <span class="muted">defer the empty-canvas deselect so a double-click can add a point first:</span>
+              <div>
+                <v-btn
+                  size="small"
+                  class="m-btn"
+                  :color="deferDeselect ? 'amber' : '#888888'"
+                  @click="deferDeselect = !deferDeselect"
+                >
+                  defer deselect: {{ deferDeselect ? 'on' : 'off' }}
+                </v-btn>
+              </div>
+              <span class="muted">deselect delay: {{ deselectDelayMs }} ms (0 = instant)</span>
+              <v-slider
+                v-model="deselectDelayMs"
+                :min="0"
+                :max="800"
+                :step="50"
+                :disabled="!deferDeselect"
+                density="compact"
+                hide-details
+              />
             </div>
 
             <template v-if="selected">
@@ -469,6 +496,33 @@
                     assist: {{ asEditableLine.assistShow.value }}
                   </v-btn>
                   <br />
+                  <span class="muted">click gestures (add/break a point):</span>
+                  <br />
+                  <v-btn
+                    size="small"
+                    class="m-btn"
+                    :color="asEditableLine.addOnDblClick.value ? 'amber' : '#888888'"
+                    @click="asEditableLine.addOnDblClick.value = !asEditableLine.addOnDblClick.value"
+                  >
+                    dbl add: {{ asEditableLine.addOnDblClick.value }}
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    class="m-btn"
+                    :color="asEditableLine.breakOnDblClick.value ? 'amber' : '#888888'"
+                    @click="asEditableLine.breakOnDblClick.value = !asEditableLine.breakOnDblClick.value"
+                  >
+                    dbl break: {{ asEditableLine.breakOnDblClick.value }}
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    class="m-btn"
+                    :color="asEditableLine.addOnAltClick.value ? 'amber' : '#888888'"
+                    @click="asEditableLine.addOnAltClick.value = !asEditableLine.addOnAltClick.value"
+                  >
+                    alt add: {{ asEditableLine.addOnAltClick.value }}
+                  </v-btn>
+                  <br />
                   <span class="muted">scalable parts:</span>
                   <br />
                   <v-btn
@@ -673,6 +727,7 @@ import { VBtn, VCol, VContainer, VRow, VSlider } from 'vuetify/components'
 import ComponentHeader from './components/ComponentHeader.vue'
 import PmiSplitPane from './components/PmiSplitPane.vue'
 import PmiSplitPaneContainer from './components/PmiSplitPaneContainer.vue'
+import Konva from 'konva'
 import { KonvexStageContainer } from '@balage1551/konvex'
 import type { KonvexStageExpose, WorldMode, ZoomMode } from '@balage1551/konvex'
 import type { KonvexStage } from '@balage1551/konvex'
@@ -716,6 +771,12 @@ const altDown = ref(false)
 const lineProjection = shallowRef<LineProjection | null>(null)
 const PROJECTION_SCOPES = ['internal', 'terminal', 'start', 'end'] as const
 const projectionScope = ref<LineProjectionScope>('internal')
+
+// Host-owned empty-canvas deselect timing (applied in onStageReady). Deferring
+// lets a double-click add a point before the single-click deselect fires; toggle
+// it off to feel the raw click-before-dblclick race.
+const deferDeselect = ref(true)
+const deselectDelayMs = ref(Konva.dblClickWindow)
 
 /** Cycle to the next value in a literal list (wraps). */
 function cycle<E extends string>(list: readonly E[], current: string | undefined): E {
@@ -937,7 +998,11 @@ function addEditableLine(): void {
     pointOptions: [{ movable: false }], // pin the first point, to show per-point overrides
     handles: { show: 'whenSelected', size: 12 },
     assist: { show: 'onAlt', scope: 'internal', snapThreshold: 14 },
-    addOnAltClick: true,
+    // Plain double-click adds/breaks — no Alt. The single-vs-double-click race
+    // (the first `click` of a double fires before `dblclick`) is resolved at the
+    // host by deferring the empty-canvas deselect; see onStageReady.
+    addOnDblClick: true, // dblclick on empty canvas → add a point (snaps to the line if near)
+    breakOnDblClick: true, // dblclick on the line → insert a point at the projection
   })
   editableLines.push(el)
   register(el)
@@ -1296,9 +1361,39 @@ function onStageReady(stage: KonvexStage): void {
   projGuide.points.value = () => projViz.value?.guide ?? []
   projGuide.visible.value = () => !!projViz.value
 
-  // Click empty canvas to deselect — but not on Alt+click (that adds a point).
+  // Click empty canvas to deselect. But a *double*-click on empty canvas ADDS a
+  // point (EditableLine.addOnDblClick), and the browser fires the first `click`
+  // of a double before the `dblclick` — so an eager deselect would fire (and
+  // clear `active`) before the add ever runs. Selection is a host concern, so
+  // the host owns the fix: defer the deselect by Konva's own double-click window
+  // and cancel it if a `dblclick` lands. The delay only affects deselect.
+  let deselectTimer: ReturnType<typeof setTimeout> | undefined
+  const cancelPendingDeselect = (): void => {
+    if (deselectTimer !== undefined) {
+      clearTimeout(deselectTimer)
+      deselectTimer = undefined
+    }
+  }
   stage.onClick(e => {
-    if (e.target === stage.detach() && !e.evt.altKey) select(undefined)
+    if (e.target !== stage.detach()) return // empty canvas only
+    if (e.evt.altKey) return // Alt is the show-control-lines modifier — never deselects
+    if (!deferDeselect.value) {
+      select(undefined) // immediate — reproduces the raw click-before-dblclick race
+      return
+    }
+    if (e.evt.detail >= 2) {
+      // Second click of a double: the dblclick handler adds the point; don't deselect.
+      cancelPendingDeselect()
+      return
+    }
+    cancelPendingDeselect()
+    deselectTimer = setTimeout(() => {
+      deselectTimer = undefined
+      select(undefined)
+    }, deselectDelayMs.value)
+  })
+  stage.onDblClick(e => {
+    if (e.target === stage.detach()) cancelPendingDeselect()
   })
   // Live world coordinate under the cursor (uses the stage's pointer utility).
   stage.onMouseMove(() => {

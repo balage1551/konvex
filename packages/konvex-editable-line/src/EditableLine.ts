@@ -43,6 +43,12 @@ export class EditableLine extends KonvexGroup {
   readonly scalableComponents: Ref<ScalableComponents>
   readonly defaultMovable: Ref<PointMovement>
   readonly defaultSelectable: Ref<boolean>
+  /** Double-clicking the stage adds a point (snapped to the line if close). */
+  readonly addOnDblClick: Ref<boolean>
+  /** Double-clicking the line inserts a point at the projection. */
+  readonly breakOnDblClick: Ref<boolean>
+  /** Alt+click commits the assist (insert on the line, or extend at the cursor). */
+  readonly addOnAltClick: Ref<boolean>
   /** One row per point: index, coordinate, effective options and selection. */
   readonly pointInfos: ComputedRef<PointInfo[]>
 
@@ -85,6 +91,9 @@ export class EditableLine extends KonvexGroup {
     this.scalableComponents = ref(config.scalableComponents ?? ['line'])
     this.defaultMovable = ref(config.movable ?? 'free')
     this.defaultSelectable = ref(config.selectable ?? true)
+    this.addOnDblClick = ref(config.addOnDblClick ?? false)
+    this.breakOnDblClick = ref(config.breakOnDblClick ?? false)
+    this.addOnAltClick = ref(config.addOnAltClick ?? false)
 
     const flat = (config.points ?? []).flatMap(p => [p.x, p.y])
     this.line = new KonvexLine({ ...config.line, points: flat })
@@ -238,7 +247,7 @@ export class EditableLine extends KonvexGroup {
     })
 
     this.line.onDblClick(e => {
-      if (!this._cfg.breakOnDblClick) return
+      if (!this.breakOnDblClick.value) return
       e.cancelBubble = true
       const p = this.localPointer()
       if (!p) return
@@ -554,7 +563,7 @@ export class EditableLine extends KonvexGroup {
     })
     stage.on('mouseleave' + this._ns, () => this.hideAssist())
     stage.on('click' + this._ns, e => {
-      if (!this._cfg.addOnAltClick || !this.active.value) return
+      if (!this.addOnAltClick.value || !this.active.value) return
       if (!(e.evt as MouseEvent).altKey) return
       // only on this line or empty canvas — never on a handle or another shape
       if (e.target !== stage && e.target !== this.line.konvaRoot()) return
@@ -569,7 +578,7 @@ export class EditableLine extends KonvexGroup {
       this.insertPoint(index, point)
     })
     stage.on('dblclick' + this._ns, e => {
-      if (!this._cfg.addOnDblClick || !this.active.value) return
+      if (!this.addOnDblClick.value || !this.active.value) return
       if (e.target !== stage) return // only on empty canvas, not on a shape/handle
       const p = this.localPointer()
       if (!p) return
