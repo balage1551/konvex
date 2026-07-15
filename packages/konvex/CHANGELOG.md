@@ -1,3 +1,9 @@
 # @balage1551/konvex
 
+## 1.2.0
+
+### Patch Changes
+
+- 5b90248: Fix component styles being tree-shaken away in consuming apps. Both packages declared `"sideEffects": false`, which let bundlers drop the injected `import './index.css'` — so the editable-line toolbar (and the core stage-container styles) mounted unstyled. Mark CSS as side-effectful (`"sideEffects": ["**/*.css"]`) and expose the stylesheet via a `./style.css` export.
+
 ## 1.1.0
