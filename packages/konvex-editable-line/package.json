@@ -1,6 +1,6 @@
 {
   "name": "@balage1551/konvex-editable-line",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "An interactively editable polyline for Konvex: handles, projection assist, rubber-band selection, straighten/simplify and a toolbar.",
   "license": "MIT",
   "author": "Balázs Vissy (balage1551)",
