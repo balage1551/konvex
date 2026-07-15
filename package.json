@@ -16,9 +16,15 @@
   "scripts": {
     "build": "npm run build -w @balage1551/konvex && npm run build -w @balage1551/konvex-editable-line",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo"
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "npm run build && changeset publish"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
   }
 }
