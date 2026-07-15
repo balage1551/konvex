@@ -549,6 +549,14 @@
                   >
                     def selectable: {{ asEditableLine.defaultSelectable.value }}
                   </v-btn>
+                  <v-btn
+                    size="small"
+                    class="m-btn"
+                    :color="asEditableLine.persistentSelection.value ? 'amber' : '#888888'"
+                    @click="asEditableLine.persistentSelection.value = !asEditableLine.persistentSelection.value"
+                  >
+                    persist sel: {{ asEditableLine.persistentSelection.value }}
+                  </v-btn>
                   <v-btn size="small" class="m-btn" @click="asEditableLine.clearSelection()">clear sel</v-btn>
                   <v-btn size="small" class="m-btn" @click="asEditableLine.removeSelected()">del selected</v-btn>
                 </template>

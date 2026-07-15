@@ -138,6 +138,12 @@ export interface EditableLineConfig extends KonvexGroupConfig {
    * unifies break + add and avoids the single-vs-double-click conflict.
    */
   addOnAltClick?: boolean
+  /**
+   * Keep the handle (point) selection when the line is deactivated. When `false`
+   * (default), deselecting the line clears its point selection. Tweakable at
+   * runtime via {@link EditableLine.persistentSelection}.
+   */
+  persistentSelection?: boolean
 }
 
 /** A row of {@link EditableLine.pointInfos}. */

@@ -52,6 +52,8 @@ export class EditableLine extends KonvexGroup {
   readonly breakOnDblClick: Ref<boolean>
   /** Alt+click commits the assist (insert on the line, or extend at the cursor). */
   readonly addOnAltClick: Ref<boolean>
+  /** Keep the point selection when the line is deactivated; otherwise it clears on deselect. */
+  readonly persistentSelection: Ref<boolean>
   /** One row per point: index, coordinate, effective options and selection. */
   readonly pointInfos: ComputedRef<PointInfo[]>
 
@@ -97,6 +99,7 @@ export class EditableLine extends KonvexGroup {
     this.addOnDblClick = ref(config.addOnDblClick ?? false)
     this.breakOnDblClick = ref(config.breakOnDblClick ?? false)
     this.addOnAltClick = ref(config.addOnAltClick ?? false)
+    this.persistentSelection = ref(config.persistentSelection ?? false)
 
     const flat = (config.points ?? []).flatMap(p => [p.x, p.y])
     this.line = new KonvexLine({ ...config.line, points: flat })
@@ -207,9 +210,13 @@ export class EditableLine extends KonvexGroup {
         () => this.refreshHandles(),
         { immediate: true }
       )
-      // Deselecting the line clears the assist (no mousemove fires to do it).
+      // Deselecting the line clears the assist (no mousemove fires to do it), and
+      // — unless persistentSelection is set — clears the point selection too.
       watch(this.active, a => {
-        if (!a) this.hideAssist()
+        if (!a) {
+          this.hideAssist()
+          if (!this.persistentSelection.value) this.clearSelection()
+        }
       })
       // Re-apply scalable parts; markers take it at creation, so rebuild them.
       watch(this.scalableComponents, () => {
