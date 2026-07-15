@@ -1,0 +1,63 @@
+name: Release
+
+# Changesets-driven release. On every push to main this either:
+#   1. opens/updates a "Version Packages" PR (when unreleased changesets exist),
+#      which bumps BOTH packages in lockstep (see .changeset/config.json `fixed`)
+#      and updates changelogs; or
+#   2. when that Version PR is merged (no changesets left, versions bumped),
+#      publishes any package whose version isn't yet on npm.
+#
+# Publishing uses OIDC "trusted publishing" — no npm token is stored. npm verifies
+# the request came from this repo/workflow (configured per-package at
+# npmjs.com › Package settings › Trusted Publisher).
+
+on:
+  push:
+    branches: [main]
+  # Manual fallback: dispatch this to re-run publishing for versions already on
+  # main (e.g. if an automated publish half-failed). With no pending changesets,
+  # changesets/action runs the publish step; it's idempotent, so it only pushes
+  # versions not yet on the registry.
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create the Version PR branch, tags, and GitHub Releases
+  pull-requests: write # open/update the "Version Packages" PR
+  id-token: write # REQUIRED: mint the OIDC token npm exchanges for publish auth
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # NOTE: no `registry-url` here on purpose. Setting it makes setup-node write
+      # an .npmrc with an empty `_authToken`, which npm treats as "auth already
+      # configured" and SKIPS the OIDC exchange (publish then 404s). Trusted
+      # publishing uses the default registry anyway.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Trusted publishing needs npm >= 11.5.1; pin to the validated 11.x line.
+      - run: npm install -g npm@11
+
+      - run: npm ci
+
+      # Opens/updates the Version PR, or (once versions are bumped) runs
+      # `npm run release` = build then `changeset publish` (idempotent — skips
+      # versions already on the registry).
+      - name: Version or publish
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          publish: npm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `changeset publish` shells out to `npm publish`; this flag makes each
+          # publish attach a signed build-provenance attestation (needs id-token).
+          NPM_CONFIG_PROVENANCE: true
