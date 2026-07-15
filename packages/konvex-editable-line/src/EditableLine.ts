@@ -21,6 +21,9 @@ import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-e
 
 let elSeq = 0
 
+/** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
+const DEFAULT_SNAP_THRESHOLD = 10
+
 /**
  * An interactively editable polyline. A `KonvexGroup` owning a `KonvexLine`
  * (the geometry, exposed as {@link line} — style it directly) plus a layer of
@@ -584,7 +587,7 @@ export class EditableLine extends KonvexGroup {
       if (!p) return
       const scope = this._cfg.assist?.scope ?? 'internal'
       const proj = this.line.project(p, scope)
-      const threshold = this._cfg.assist?.snapThreshold ?? Infinity
+      const threshold = this._cfg.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD
       if (proj && proj.segment >= 0 && proj.distance <= threshold) {
         this.insertPoint(proj.segment + 1, proj.point)
       } else if (proj && proj.segment < 0) {
@@ -706,7 +709,7 @@ export class EditableLine extends KonvexGroup {
     const segCount = this.pointCount - 1
     if (proj.segment < 0) return { index: 0, point: cursor } // prepend
     if (proj.segment >= segCount) return { index: this.pointCount, point: cursor } // append
-    const snap = proj.distance <= (this._cfg.assist?.snapThreshold ?? Infinity)
+    const snap = proj.distance <= (this._cfg.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
     return { index: proj.segment + 1, point: snap ? proj.point : cursor }
   }
 

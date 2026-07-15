@@ -56,7 +56,7 @@ export interface AssistConfig {
   show?: AssistShow
   /** Which part of the line to project onto (default `'internal'`). */
   scope?: LineProjectionScope
-  /** Snap the insertion point to the line when within this distance (world units). */
+  /** Snap the insertion point to the line when within this distance (world units, default `10`). */
   snapThreshold?: number
 }
 
