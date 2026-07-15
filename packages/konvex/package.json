@@ -1,6 +1,6 @@
 {
   "name": "@balage1551/konvex",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A reactive Vue 3 wrapper around Konva: shapes, stage/layer, scaling, world modes and zoom.",
   "license": "MIT",
   "author": "Balázs Vissy (balage1551)",
