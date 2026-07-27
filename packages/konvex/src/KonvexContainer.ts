@@ -19,9 +19,12 @@ export abstract class KonvexContainer<
   protected readonly _children: Ch[] = []
 
   /**
-   * Reactive version counter, bumped on every add/remove. Konva fires no
-   * child-add event, so this is how reactive consumers (e.g. a stage that
-   * auto-sizes its world to its contents) learn the child set changed.
+   * Reactive version counter, bumped on every add/remove — here *and* in any
+   * descendant container, since the bump bubbles up the ancestor chain (see
+   * {@link bumpVersion}). Konva's own `add` event fires only on the immediate
+   * parent, so this is how reactive consumers (e.g. a stage that auto-sizes
+   * its world to its contents, or pushes its measurement scale down to every
+   * shape) learn that anything in the subtree changed.
    */
   private readonly _version = ref(0)
 
@@ -49,7 +52,7 @@ export abstract class KonvexContainer<
       child.konvaRoot().zIndex(index)
     }
     child._parent.value = this as unknown as KonvexNode<Konva.Node>
-    this._version.value++
+    this.bumpVersion()
     return child
   }
 
@@ -60,7 +63,25 @@ export abstract class KonvexContainer<
       this._children.splice(i, 1)
       child.konvaRoot().remove()
       child._parent.value = undefined
-      this._version.value++
+      this.bumpVersion()
+    }
+  }
+
+  /**
+   * Bump this container's version and every ancestor container's.
+   *
+   * Without the bubbling, a watcher on an outer container (typically the
+   * stage's world) never fires for a shape added to a nested group, so such
+   * shapes would silently miss subtree-wide updates — e.g. the measurement
+   * scale the stage pushes into every shape's `unitScale`, leaving their
+   * `scaled*` values in raw pixels.
+   */
+  private bumpVersion(): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let n: KonvexBase | undefined = this
+    while (n) {
+      if (n instanceof KonvexContainer) n._version.value++
+      n = n.parent
     }
   }
 
