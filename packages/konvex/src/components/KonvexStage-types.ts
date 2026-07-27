@@ -13,8 +13,11 @@ export interface ContentSize {
  * specified `contentSize`:
  * - `free`    — world = the minimal bounding box of the contents.
  * - `elastic` — world = that bbox, but never smaller than `contentSize`.
- * - `clipped` — world = `contentSize`; content outside it is clipped away.
+ * - `clipped` — world = `contentSize`; dragging keeps each object inside it, and
+ *   anything still outside (placed programmatically) is clipped away.
  * - `bounded` — world = `contentSize`; dragging keeps each object inside it.
+ *   Same constraint as `clipped`, without the clip: content put outside by code
+ *   stays visible.
  */
 export type WorldMode = 'free' | 'elastic' | 'clipped' | 'bounded'
 

@@ -213,9 +213,15 @@ unscaled **overlay** layer, and provides zoom / scroll / world-mode.
 ones fall back to Konva/behavioural defaults.
 
 **`worldMode`:** `free` = world is the content's bounding box; `elastic` = that
-bbox but never smaller than `contentSize`; `clipped` = world is exactly
-`contentSize` (outside is clipped); `bounded` = world is `contentSize` and drags
-keep objects inside it.
+bbox but never smaller than `contentSize`; `bounded` = world is exactly
+`contentSize` and drags keep each object inside it; `clipped` = the same drag
+constraint, plus anything still outside (placed programmatically) is clipped away.
+
+The drag constraint is applied as a `dragBoundFunc`, so the position is corrected
+*before* it lands on the node — a node never briefly holds an out-of-world value,
+and anything deriving state from the drag (an `EditableLine` handle writing its
+point, say) sees the constrained position. A node's own `dragBoundFunc` still
+applies; the world constraint composes with it rather than replacing it.
 
 ### Events
 

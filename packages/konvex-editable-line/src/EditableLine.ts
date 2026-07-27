@@ -262,8 +262,10 @@ export class EditableLine extends KonvexGroup {
     window.addEventListener('keydown', this._onKey)
     window.addEventListener('keyup', this._onKey)
 
-    // Dragging the whole line (the group body) also suppresses the assist.
-    // Handle drags cancel-bubble, so these fire only for body drags.
+    // Dragging the whole line (the group body) also suppresses the assist. Handle
+    // drags bubble up to here too and set the same two things again — harmless,
+    // and the price of letting the stage see `dragstart` so it can constrain the
+    // drag to the world.
     this.onDragStart(() => {
       this._dragging = true
       this.hideAssist()
@@ -489,7 +491,11 @@ export class EditableLine extends KonvexGroup {
       }
     })
     h.onDragStart(e => {
-      e.cancelBubble = true
+      // Deliberately NOT cancelBubble: the stage constrains a drag by installing
+      // a `dragBoundFunc` when it sees `dragstart`, and swallowing the event here
+      // left handle drags unconstrained in `bounded` / `clipped` worlds. The
+      // group-level dragstart below does the same two things this does, so
+      // letting it through costs nothing.
       this._dragging = true
       this.hideAssist()
       const idx = this._handles.indexOf(h)

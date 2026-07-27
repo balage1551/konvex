@@ -13,6 +13,7 @@ import type Konva from 'konva'
 import { KonvexStage } from '../KonvexStage'
 import { KonvexLayer } from '../KonvexLayer'
 import { KonvexRect } from '../KonvexRect'
+import { clampDragAbsolute } from '../KonvexRectOps'
 import type { Vector2d } from '../KonvexTypes'
 import {
   DEFAULT_ZOOM_LEVELS,
@@ -240,27 +241,63 @@ function onScroll(): void {
   emit('scroll', { x: el.scrollLeft, y: el.scrollTop })
 }
 
-// --- bounded-mode drag clamp + free/elastic auto-resize -------------------
-/** Clamp a node's bbox fully inside `rect` (top-left wins if it's too big). */
-function clampNode(node: Konva.Node): void {
+// --- drag clamp (bounded / clipped) + free/elastic auto-resize -------------
+/** Modes whose world rect is fixed, so dragged content must stay inside it. */
+function clampsDrag(): boolean {
+  return props.worldMode === 'bounded' || props.worldMode === 'clipped'
+}
+/**
+ * Correct an absolute drag position so the node's bbox stays inside `rect`
+ * (top-left wins if the node is larger than the world).
+ *
+ * This runs as a `dragBoundFunc`, i.e. *before* Konva applies the position —
+ * which is the only place a clamp can work. Correcting afterwards on `dragmove`
+ * cannot: Konva derives each frame's position from the pointer rather than from
+ * where the node currently is, so it re-places the node at the cursor on every
+ * frame, and anything that read the node in its own `dragmove` handler has
+ * already seen the unclamped value. For a composite object that is a visible
+ * corruption — dragging an `EditableLine` handle let the line write its point at
+ * the cursor, then the clamp pulled just the handle back inside, leaving the
+ * handle on the edge and the stored point outside the world.
+ */
+function clampDragPosition(node: Konva.Node, pos: Vector2d): Vector2d {
   const wn = world.value?.detach()
-  if (!wn) return
+  if (!wn || !zoom) return pos
   const r = node.getClientRect({ relativeTo: wn, skipShadow: true })
-  let dx = 0
-  let dy = 0
-  if (r.x + r.width > rect.x + rect.width) dx = rect.x + rect.width - (r.x + r.width)
-  if (r.y + r.height > rect.y + rect.height) dy = rect.y + rect.height - (r.y + r.height)
-  if (r.x + dx < rect.x) dx = rect.x - r.x
-  if (r.y + dy < rect.y) dy = rect.y - r.y
-  if (dx || dy) {
-    node.x(node.x() + dx)
-    node.y(node.y() + dy)
-  }
+  return clampDragAbsolute(r, node.absolutePosition(), pos, zoom, rect)
+}
+
+type DragBoundFn = (this: Konva.Node, pos: Vector2d) => Vector2d
+/** The dragged node's own `dragBoundFunc`, put back when the drag ends. */
+let dragBoundRestore: { node: Konva.Node; fn: DragBoundFn | undefined } | null = null
+
+/** Narrow `node`'s drag to the world, keeping any constraint it already had. */
+function installDragClamp(node: Konva.Node): void {
+  if (!clampsDrag() || dragBoundRestore?.node === node) return
+  // Compose rather than replace: a node may carry its own constraint (an axis
+  // lock, say), which still applies — we only narrow it to the world.
+  const own = node.dragBoundFunc() as DragBoundFn | undefined
+  dragBoundRestore = { node, fn: own }
+  node.dragBoundFunc(function (this: Konva.Node, pos: Vector2d) {
+    return clampDragPosition(this, own ? own.call(this, pos) : pos)
+  })
+}
+function onContentDragStart(e: Konva.KonvaEventObject<DragEvent>): void {
+  installDragClamp(e.target)
+}
+function onContentDragEnd(): void {
+  if (!dragBoundRestore) return
+  const { node, fn } = dragBoundRestore
+  dragBoundRestore = null
+  node.dragBoundFunc(fn as NonNullable<DragBoundFn>)
 }
 function onContentDragMove(e: Konva.KonvaEventObject<DragEvent>): void {
-  if (props.worldMode === 'bounded') {
-    clampNode(e.target)
-  } else if (props.worldMode === 'free' || props.worldMode === 'elastic') {
+  // Fallback install. The constraint belongs on `dragstart`, but a child that
+  // calls `cancelBubble` on that event would otherwise escape the world
+  // entirely and silently — so catch it on the first move instead. One frame
+  // late, then correct for the rest of the drag.
+  installDragClamp(e.target)
+  if (props.worldMode === 'free' || props.worldMode === 'elastic') {
     // Content moved → the auto-sized world may have grown/shrunk.
     recompute()
     applyTransform()
@@ -467,7 +504,9 @@ onMounted(() => {
   frameRect.value = f
 
   // Drag events bubble to the layer, so one listener handles every child.
+  w.detach().on('dragstart', onContentDragStart)
   w.detach().on('dragmove', onContentDragMove)
+  w.detach().on('dragend', onContentDragEnd)
 
   recompute()
   syncViewportSize()
