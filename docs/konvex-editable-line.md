@@ -91,7 +91,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `rubberBand` | `RubberBandConfig` | — | `enabled` (default `true`), `fill`, `stroke`. |
 | `simplification` | `SimplificationThreshold` | `{ angle:5, distance:10 }` | Thresholds for `simplify()`. |
 | `scalableComponents` | `'all' \| 'none' \| ('line'\|'marker'\|'helper')[]` | `['line']` | Which parts scale with zoom. |
-| `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. Splitting a segment only makes sense on the body, so this is inert unless `projectionScope` is `'internal'`. |
+| `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. Splitting a segment only makes sense on the body, so this is inert unless `projectionScope` contains `'internal'`. |
 | `addOnDblClick` | `boolean` | — | Double-click the stage adds a point, where `projectionScope` says (snapped onto the line if within `snapThreshold`). |
 | `addOnAltClick` | `boolean` | — | Alt+click commits the assist (insert / extend). |
 
@@ -105,7 +105,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `pointInfos` | `ComputedRef<PointInfo[]>` | One row per point (index, x, y, effective options, selected). |
 | `handlesShow` | `Ref<HandleShow>` | Live handle visibility mode. |
 | `assistShow` | `Ref<AssistShow>` | Live assist visibility mode. |
-| `projectionScope` | `Ref<LineProjectionScope>` | Live: where an added point may land. `'internal'` always splits a body segment (never extends, wherever the cursor is); `'start'`/`'end'`/`'terminal'` always extend at that end (never split). Every add gesture and the assist preview read this one value, so they cannot disagree. Seeded from `assist.scope`. |
+| `projectionScope` | `Ref<LineProjectionScope>` | Live **set** of the parts a new point may land on — any subset of `'start'` / `'internal'` / `'end'`, defaulting to all three. Holds the resolved set: seed it by name via `assist.scope`, assign a set (or a `LINE_PROJECTION_SCOPES` entry) at runtime. Every add gesture and the assist preview read this one value, so they cannot disagree. |
 | `snapThreshold` | `Ref<number>` | Live: distance within which an inserted point snaps onto the line. Seeded from `assist.snapThreshold`. |
 | `scalableComponents` | `Ref<ScalableComponents>` | Live zoom-scaling set. |
 | `defaultMovable` | `Ref<PointMovement>` | Live line-wide movement default. |
@@ -175,10 +175,12 @@ const items: ToolbarItemSpec[] = [
 `align-v-start`, `align-v-center`, `align-v-end`,
 `straighten`, `simplify`, `toggle-closed`, `projection-scope`, `delete`.
 
-`projection-scope` cycles `line.projectionScope` through
-`internal → terminal → start → end`, i.e. where a newly added point may land. Its
-glyph shows the current scope, so it doubles as the indicator, and it keeps the
-bar open so you can step round to the one you want.
+`projection-scope` cycles `line.projectionScope` through the named sets —
+`anywhere → internal → terminal → start → end` — i.e. where a newly added point
+may land. Its glyph shows the current set, so it doubles as the indicator, and it
+keeps the bar open so you can step round to the one you want. A hand-rolled subset
+(`internal` + one end) has no glyph of its own: it shows the permissive one and
+names the parts in the tooltip, and cycling from it restarts at `anywhere`.
 
 Divider tokens: `'|'` or `'separator'`. `DEFAULT_TOOLBAR_ITEMS` is the six
 aligns + `straighten`/`simplify` + `delete`. `BUILTIN_TOOLBAR_ITEMS` is the
@@ -228,4 +230,5 @@ el.events.on('toolbar-request', ({ pointerScreen, pointerWorld, selection }) => 
 - `ScalableComponent` = `'line' | 'marker' | 'helper'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
 - `ToolbarItemState` = `'hidden' | 'disabled' | 'enabled'`.
 - `ToolbarItemSpec` = `EditableLineToolbarItem | string`.
-- `SimplificationThreshold`, `Vector2d`, `LineProjectionScope` are re-exported from the core.
+- `SimplificationThreshold`, `Vector2d`, `LineProjectionPart` / `LineProjectionScope` /
+  `LINE_PROJECTION_SCOPES` are re-exported from the core.

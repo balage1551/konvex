@@ -1,6 +1,6 @@
 import type { Vector2d } from '@balage1551/konvex'
 import type { KonvexGroupConfig } from '@balage1551/konvex'
-import type { KonvexLineConfig, LineProjectionScope } from '@balage1551/konvex'
+import type { KonvexLineConfig, LineProjectionScopeInput } from '@balage1551/konvex'
 import type { SimplificationThreshold } from '@balage1551/konvex'
 
 // Re-export so a config author can name the type from the editableline package.
@@ -54,8 +54,11 @@ export type AssistShow = 'always' | 'onAlt' | 'never'
 export interface AssistConfig {
   /** When the projection assist is shown. */
   show?: AssistShow
-  /** Which part of the line to project onto (default `'internal'`). */
-  scope?: LineProjectionScope
+  /**
+   * Where added points may land — any subset of `'start'` / `'internal'` / `'end'`,
+   * or the name of a predefined set. Defaults to `'anywhere'` (all three).
+   */
+  scope?: LineProjectionScopeInput
   /** Snap the insertion point to the line when within this distance (world units, default `10`). */
   snapThreshold?: number
 }

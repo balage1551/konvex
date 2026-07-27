@@ -746,7 +746,13 @@ import { KonvexEllipse } from '@balage1551/konvex'
 import { KonvexRing } from '@balage1551/konvex'
 import { KonvexWedge } from '@balage1551/konvex'
 import { KonvexArc } from '@balage1551/konvex'
-import { KonvexLine, type LineProjection, type LineProjectionScope } from '@balage1551/konvex'
+import {
+  KonvexLine,
+  LINE_PROJECTION_SCOPES,
+  type LineProjection,
+  type LineProjectionScope,
+  type LineProjectionScopeName,
+} from '@balage1551/konvex'
 import { KonvexArrow } from '@balage1551/konvex'
 import { KonvexPath } from '@balage1551/konvex'
 import { KonvexTag } from '@balage1551/konvex'
@@ -777,8 +783,17 @@ const unitScale = ref(1) // measurement scale (real units per world unit)
 const cursor = shallowRef<{ x: number; y: number } | null>(null)
 const altDown = ref(false)
 const lineProjection = shallowRef<LineProjection | null>(null)
-const PROJECTION_SCOPES = ['internal', 'terminal', 'start', 'end'] as const
-const projectionScope = ref<LineProjectionScope>('internal')
+const PROJECTION_SCOPES = ['anywhere', 'internal', 'terminal', 'start', 'end'] as const
+// The host keeps the *name* for display; EditableLine holds the resolved set.
+const projectionScope = ref<LineProjectionScopeName>('anywhere')
+/** Name a set of parts, so a change made from the toolbar can be shown here. */
+function projectionScopeName(scope: LineProjectionScope): LineProjectionScopeName {
+  const key = [...scope].sort().join(',')
+  return (
+    PROJECTION_SCOPES.find(n => [...LINE_PROJECTION_SCOPES[n]].sort().join(',') === key) ??
+    'anywhere'
+  )
+}
 
 // Host-owned empty-canvas deselect timing (applied in onStageReady). Deferring
 // lets a double-click add a point before the single-click deselect fires; toggle
@@ -840,7 +855,8 @@ function cycleProjectionScope(): void {
   projectionScope.value = cycle(PROJECTION_SCOPES, projectionScope.value)
   // Drives both demos: the raw KonvexLine.project() readout below, and every
   // EditableLine's assist + insertion (they share one setting).
-  editableLines.forEach(el => (el.projectionScope.value = projectionScope.value))
+  const parts = LINE_PROJECTION_SCOPES[projectionScope.value]
+  editableLines.forEach(el => (el.projectionScope.value = parts))
   updateProjection()
 }
 
@@ -1020,7 +1036,7 @@ function addEditableLine(): void {
   // The toolbar's scope item sets it on the line; mirror it back so the readout
   // above stays truthful whichever control was used.
   watch(el.projectionScope, s => {
-    projectionScope.value = s
+    projectionScope.value = projectionScopeName(s)
     updateProjection()
   })
   editableLines.push(el)

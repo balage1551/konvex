@@ -318,15 +318,27 @@ Members: `points`, `tension`, `closed`, `bezier`; computed `pixelLength`,
 Methods:
 - `worldPoints(): Vector2d[]` — points in parent/world space.
 - `project(point, scope?): LineProjection | undefined` — closest point on the
-  flat line to `point` (parent/world coords). `scope`: `'internal'` (whole body,
-  default) / `'terminal'` (endpoints only) / `'start'` / `'end'`. See
+  flat line to `point` (parent/world coords), among the parts in `scope`. See
   [`LineProjection`](#value-types).
 
-  The scope alone fixes which `segment` values can come back, and a query beyond
-  either end does not change that: `'internal'` always reports a body segment
-  (`0 … n-1`), clamping onto the terminal vertex, and never the out-of-range
-  `-1` / `n` that mean "extend the line". Ask for an extension with `'start'`,
-  `'end'` or `'terminal'`.
+  A scope is a **set** of `LineProjectionPart` — `'start'`, `'internal'`, `'end'`
+  — so any subset is valid. `project` evaluates every allowed part and returns the
+  nearest. Pass a set, or the name of a predefined one:
+
+  | name | set | meaning |
+  | --- | --- | --- |
+  | `'anywhere'` | `['start','internal','end']` | body or either end (**default**) |
+  | `'internal'` | `['internal']` | body only |
+  | `'terminal'` | `['start','end']` | either end, never the body |
+  | `'start'` / `'end'` | `['start']` / `['end']` | that end only |
+
+  `LINE_PROJECTION_SCOPES` holds them; `lineProjectionParts(scope)` resolves a
+  name or set to its parts. The empty set allows nothing and returns `undefined`.
+
+  The scope alone bounds which `segment` values can come back. Segment projections
+  are clamped, so a query past an end lands on the terminal vertex: with that end
+  in scope it reports the extension (`-1` / `n`), and without it stays a body
+  insert into the terminal segment. That is why `'internal'` alone never extends.
 
 ### `KonvexArrow` (extends `KonvexLine`)
 Config adds: `pointerLength?`, `pointerWidth?`, `pointerAtBeginning?`, `pointerAtEnding?`.

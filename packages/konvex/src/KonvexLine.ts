@@ -6,27 +6,58 @@ import type { KonvexLayer } from './KonvexLayer'
 import type { AttrSource, NumberParameter, Vector2d } from './KonvexTypes'
 
 /**
- * Where on the line {@link KonvexLine.project} searches:
- * - `internal` — the whole polyline body (any segment / vertex);
- * - `terminal` — the start and end vertices only;
- * - `start` / `end` — that one terminal vertex.
+ * One place a point may go:
+ * - `start` — before the first point (extending the line backwards);
+ * - `internal` — anywhere along the body, splitting a segment;
+ * - `end` — after the last point (extending it forwards).
  */
-export type LineProjectionScope = 'internal' | 'terminal' | 'start' | 'end'
+export type LineProjectionPart = 'start' | 'internal' | 'end'
+
+/**
+ * Where {@link KonvexLine.project} may land: any subset of the three parts.
+ * `['start', 'internal', 'end']` allows a point anywhere; `['internal']`
+ * restricts to the body; `[]` allows nothing and projects to `undefined`.
+ */
+export type LineProjectionScope = readonly LineProjectionPart[]
+
+/**
+ * The subsets worth naming — including every value the old string enum had, so
+ * `'internal'` / `'terminal'` / `'start'` / `'end'` still mean what they did.
+ */
+export const LINE_PROJECTION_SCOPES = {
+  /** The whole set: body or either end. The default. */
+  anywhere: ['start', 'internal', 'end'],
+  /** The body only — a query beyond an end clamps onto the terminal segment. */
+  internal: ['internal'],
+  /** Either end, never the body. */
+  terminal: ['start', 'end'],
+  start: ['start'],
+  end: ['end'],
+} as const satisfies Record<string, LineProjectionScope>
+
+/** Name of a {@link LINE_PROJECTION_SCOPES} entry. */
+export type LineProjectionScopeName = keyof typeof LINE_PROJECTION_SCOPES
+
+/** A scope, or the name of a predefined one — accepted wherever a scope is taken. */
+export type LineProjectionScopeInput = LineProjectionScope | LineProjectionScopeName
+
+/** Resolve a scope input to its set of parts. */
+export function lineProjectionParts(scope: LineProjectionScopeInput): LineProjectionScope {
+  return typeof scope === 'string' ? LINE_PROJECTION_SCOPES[scope] : scope
+}
 
 /** Result of {@link KonvexLine.project}. */
 export interface LineProjection {
   /** Projection point, in the line's parent (world) coordinate space. */
   point: Vector2d
   /**
-   * Where a point at this projection belongs. Which of these can occur is fixed
-   * by the requested scope, never inferred from where the query happened to fall:
+   * Where a point at this projection belongs. Which values can occur is bounded
+   * by the parts in scope — never inferred from where the query happened to fall:
    * - `0 … n-1` — a real segment, between `p[segment]` and `p[segment+1]` (a body
-   *   insert). The only possibility under `'internal'`, including for a query
-   *   beyond either end, whose projection clamps onto the terminal vertex.
-   * - `-1` — before the first point (a new first point); the terminal projection
-   *   at p0. Only under `'start'` / `'terminal'`.
-   * - `n` — after the last point (a new last point); the terminal projection at
-   *   p[n]. Only under `'end'` / `'terminal'`.
+   *   insert). Requires `internal`. Without `start`/`end` in scope, a query
+   *   beyond either end reports this too, clamped onto the terminal vertex.
+   * - `-1` — before the first point (a new first point). Requires `start`.
+   * - `n` — after the last point (a new last point). Requires `end`.
    */
   segment: number
   /** Fraction along `segment`, `0 ≤ proportion ≤ 1` (a vertex is 0 on one segment, 1 on the other). */
@@ -129,13 +160,22 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
 
   /**
    * Closest point on the (flat) line to `point` (given in parent/world coords),
-   * restricted to `scope`. Tension/bezier are ignored. Returns `undefined` for a
-   * line with fewer than two points.
+   * among the parts in `scope` — every part by default. Tension/bezier are
+   * ignored. Returns `undefined` for a line with fewer than two points, or when
+   * `scope` is empty (nothing is allowed, so nothing projects).
    */
-  project(point: Vector2d, scope: LineProjectionScope = 'internal'): LineProjection | undefined {
+  project(
+    point: Vector2d,
+    scope: LineProjectionScopeInput = 'anywhere',
+  ): LineProjection | undefined {
     const pts = this.worldPoints()
     const n = pts.length - 1 // segment count
     if (n < 1) return undefined
+    const parts = lineProjectionParts(scope)
+    const wantStart = parts.includes('start')
+    const wantInternal = parts.includes('internal')
+    const wantEnd = parts.includes('end')
+    if (!wantStart && !wantInternal && !wantEnd) return undefined
 
     // Clamped projection onto segment k, with its signed angle to the query line.
     const onSegment = (k: number): LineProjection => {
@@ -179,34 +219,44 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
       }
     }
 
-    if (scope === 'start') return terminalAt('start')
-    if (scope === 'end') return terminalAt('end')
-    if (scope === 'terminal') {
-      const s = terminalAt('start')
-      const e = terminalAt('end')
-      return e.distance < s.distance ? e : s
+    // Every allowed part is a candidate; the nearest one wins.
+    let best: LineProjection | undefined
+    const consider = (c: LineProjection): void => {
+      if (!best || c.distance < best.distance) best = c
     }
 
-    // internal: closest segment. At a shared vertex both adjacent segments tie on
-    // distance, so the smaller |angle| decides which segment owns the point.
-    const EPS = 1e-6
-    let best: LineProjection | undefined
-    for (let k = 0; k < n; k++) {
-      const c = onSegment(k)
-      if (
-        !best ||
-        c.distance < best.distance - EPS ||
-        (c.distance <= best.distance + EPS && Math.abs(c.angle) < Math.abs(best.angle))
-      ) {
-        best = c
+    if (wantInternal) {
+      // Closest segment. At a shared vertex both adjacent segments tie on
+      // distance, so the smaller |angle| decides which segment owns the point.
+      const EPS = 1e-6
+      let body: LineProjection | undefined
+      for (let k = 0; k < n; k++) {
+        const c = onSegment(k)
+        if (
+          !body ||
+          c.distance < body.distance - EPS ||
+          (c.distance <= body.distance + EPS && Math.abs(c.angle) < Math.abs(body.angle))
+        ) {
+          body = c
+        }
+      }
+      // Each segment projection is clamped, so any query past an end lands exactly
+      // on that terminal vertex. There is no segment to split out there, so if the
+      // end is in scope the honest answer is the extension. If it is *not* in
+      // scope the caller has said "body only", and it stays a body insert into the
+      // terminal segment — which is what made `internal` alone stop extending.
+      if (body) {
+        if (wantStart && body.segment === 0 && body.proportion === 0) body = terminalAt('start')
+        else if (wantEnd && body.segment === n - 1 && body.proportion === 1) {
+          body = terminalAt('end')
+        }
+        consider(body)
       }
     }
-    // No promotion to a terminal extension here, even when the projection lands
-    // exactly on p0 / p[n] (which it does for any query beyond either end, since
-    // each segment projection is clamped). This branch is reachable only under
-    // `internal`, and a caller who asked for the body means the body — reporting
-    // an out-of-range segment would silently turn an insert into an extension.
-    // Use `'terminal'` / `'start'` / `'end'` to ask for an extension.
+    // A terminal only wins on a strictly shorter distance, so a body insert keeps
+    // ties — otherwise every query would snap to an end the moment it drew level.
+    if (wantStart) consider(terminalAt('start'))
+    if (wantEnd) consider(terminalAt('end'))
     return best
   }
 

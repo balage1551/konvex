@@ -5,6 +5,7 @@ import { KonvexLine, type LineProjection } from '@balage1551/konvex'
 import { type SimplificationThreshold, simplifyPoints, straightenPoints } from '@balage1551/konvex'
 import { KonvexCircle } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
+import { LINE_PROJECTION_SCOPES, lineProjectionParts } from '@balage1551/konvex'
 import type { LineProjectionScope, Vector2d } from '@balage1551/konvex'
 import {
   type AssistShow,
@@ -57,9 +58,13 @@ export class EditableLine extends KonvexGroup {
   readonly handlesShow: Ref<HandleShow>
   readonly assistShow: Ref<AssistShow>
   /**
-   * Which part of the line points project onto: the body (`'internal'`) or a
-   * terminal extension (`'start'` / `'end'` / `'terminal'`). Governs where an
-   * added point actually lands; the assist is the preview of the same decision.
+   * Where added points may land — any subset of `'start'` / `'internal'` / `'end'`
+   * (see `LINE_PROJECTION_SCOPES` for the named ones). Defaults to all three, so
+   * a point can go on the body or extend either end.
+   *
+   * Holds the resolved set: seed it from a name via `assist.scope`, and assign a
+   * set (or a `LINE_PROJECTION_SCOPES` entry) to change it at runtime. Governs
+   * where an added point actually lands; the assist previews the same decision.
    */
   readonly projectionScope: Ref<LineProjectionScope>
   /** Distance (world units) within which an inserted point snaps onto the line. */
@@ -123,7 +128,7 @@ export class EditableLine extends KonvexGroup {
 
     this.handlesShow = ref(config.handles?.show ?? 'whenSelected')
     this.assistShow = ref(config.assist?.show ?? 'never')
-    this.projectionScope = ref(config.assist?.scope ?? 'internal')
+    this.projectionScope = ref(lineProjectionParts(config.assist?.scope ?? 'anywhere'))
     this.snapThreshold = ref(config.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
     this.scalableComponents = ref(config.scalableComponents ?? ['line'])
     this.defaultMovable = ref(config.movable ?? 'free')
@@ -299,15 +304,16 @@ export class EditableLine extends KonvexGroup {
     this.line.onDblClick(e => {
       if (!this.breakOnDblClick.value) return
       if (!isPrimaryButton(e)) return
-      // Breaking splits a body segment, so it is meaningful only under
-      // `'internal'`. Under a terminal scope the caller has said points may be
-      // added at the ends only — projecting a mid-line double-click would drop a
-      // duplicate point on an endpoint, so do nothing at all.
-      if (this.projectionScope.value !== 'internal') return
+      // Breaking splits a body segment, so it needs `internal` in scope. Without
+      // it the caller has said points go at the ends only, and projecting a
+      // mid-line double-click would drop a duplicate on an endpoint — so do
+      // nothing. The projection itself is always body-only: breaking at an end is
+      // not a break.
+      if (!this.projectionScope.value.includes('internal')) return
       e.cancelBubble = true
       const p = this.localPointer()
       if (!p) return
-      const proj = this.line.project(p, 'internal')
+      const proj = this.line.project(p, LINE_PROJECTION_SCOPES.internal)
       if (proj && proj.segment >= 0) this.insertPoint(proj.segment + 1, proj.point)
     })
   }
@@ -789,32 +795,23 @@ export class EditableLine extends KonvexGroup {
    * Where a point committed at `cursor`/`proj` would land — the single decision
    * behind every add gesture *and* the assist preview, so the two cannot disagree.
    *
-   * {@link projectionScope} is the switch, not the shape of `proj`: a scope that
-   * says "ends only" always extends, and `'internal'` always splits a body
-   * segment. Nothing is inferred from the segment index, which is what used to
-   * let an internal insert turn itself into an append whenever the cursor sat
-   * beyond an end.
+   * Read straight off `proj.segment`, which is safe now that the scope is a set
+   * of allowed parts: `project` returns an out-of-range segment only when that
+   * end is actually in scope. (It once promoted body projections to extensions
+   * regardless, which is why this briefly had to switch on the scope instead —
+   * a workaround for a projection that could not be trusted.)
    */
   private resolveInsertion(
     cursor: Vector2d,
     proj: LineProjection,
   ): { index: number; point: Vector2d; terminal: boolean } {
-    const prepend = { index: 0, point: cursor, terminal: true }
-    const append = { index: this.pointCount, point: cursor, terminal: true }
-    switch (this.projectionScope.value) {
-      case 'start':
-        return prepend
-      case 'end':
-        return append
-      // `project` already picked the nearer end; segment says which.
-      case 'terminal':
-        return proj.segment < 0 ? prepend : append
-      default: {
-        // A body insert splits `proj.segment`, snapping onto the line when close.
-        const snap = proj.distance <= this.snapThreshold.value
-        return { index: proj.segment + 1, point: snap ? proj.point : cursor, terminal: false }
-      }
+    if (proj.segment < 0) return { index: 0, point: cursor, terminal: true }
+    if (proj.segment >= this.pointCount - 1) {
+      return { index: this.pointCount, point: cursor, terminal: true }
     }
+    // A body insert splits `proj.segment`, snapping onto the line when close.
+    const snap = proj.distance <= this.snapThreshold.value
+    return { index: proj.segment + 1, point: snap ? proj.point : cursor, terminal: false }
   }
 
   private showAssist(cursor: Vector2d, proj: LineProjection): void {

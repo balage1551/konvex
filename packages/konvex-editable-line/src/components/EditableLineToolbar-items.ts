@@ -3,7 +3,8 @@
 // (delete + the six align actions), re-expressed in the item framework so they
 // sit alongside any custom tools a host adds.
 import { h } from 'vue'
-import type { LineProjectionScope } from '@balage1551/konvex'
+import { LINE_PROJECTION_SCOPES } from '@balage1551/konvex'
+import type { LineProjectionScope, LineProjectionScopeName } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type {
   EditableLineToolbarContext,
@@ -106,33 +107,52 @@ const toggleClosedItem: EditableLineToolbarItem = {
  * scope, so the item doubles as the indicator; the bar stays open so the user
  * can step round to the one they want in place.
  */
-const SCOPE_CYCLE: readonly LineProjectionScope[] = ['internal', 'terminal', 'start', 'end']
-const SCOPE_ICON: Record<LineProjectionScope, string> = {
-  internal: 'mdi-ray-vertex',
-  terminal: 'mdi-ray-start-end',
-  start: 'mdi-ray-start',
-  end: 'mdi-ray-end',
+const SCOPE_CYCLE: readonly LineProjectionScopeName[] = [
+  'anywhere',
+  'internal',
+  'terminal',
+  'start',
+  'end',
+]
+/** Order-independent identity for a set of parts, so it can key a lookup. */
+function scopeKey(scope: LineProjectionScope): string {
+  return [...scope].sort().join(',')
 }
-const SCOPE_TITLE: Record<LineProjectionScope, string> = {
-  internal: 'Add points: on the line',
-  terminal: 'Add points: at either end',
-  start: 'Add points: before the start',
-  end: 'Add points: after the end',
+const SCOPE_FACE: Record<string, { icon: string; title: string }> = {
+  'end,internal,start': { icon: 'mdi-ray-start-vertex-end', title: 'Add points: anywhere' },
+  internal: { icon: 'mdi-ray-vertex', title: 'Add points: on the line' },
+  'end,start': { icon: 'mdi-ray-start-end', title: 'Add points: at either end' },
+  start: { icon: 'mdi-ray-start', title: 'Add points: before the start' },
+  end: { icon: 'mdi-ray-end', title: 'Add points: after the end' },
+}
+/**
+ * The five named sets get a distinct glyph. A hand-rolled subset (`internal` +
+ * one end) has no natural glyph in the ray family, so it borrows the permissive
+ * one and relies on the tooltip, which always spells the parts out.
+ */
+function scopeFace(scope: LineProjectionScope): { icon: string; title: string } {
+  const key = scopeKey(scope)
+  return (
+    SCOPE_FACE[key] ?? {
+      icon: 'mdi-ray-start-vertex-end',
+      title: `Add points: ${[...scope].join(' + ') || 'nowhere'}`,
+    }
+  )
 }
 const projectionScopeItem: EditableLineToolbarItem = {
   id: 'projection-scope',
   label: 'Where new points land',
   render: ctx => {
-    const scope = ctx.line.projectionScope.value
-    return h('i', {
-      class: ['eltb-icon', 'mdi', SCOPE_ICON[scope]],
-      title: SCOPE_TITLE[scope],
-    })
+    const face = scopeFace(ctx.line.projectionScope.value)
+    return h('i', { class: ['eltb-icon', 'mdi', face.icon], title: face.title })
   },
   keepOpen: true,
   run: ctx => {
-    const cur = SCOPE_CYCLE.indexOf(ctx.line.projectionScope.value)
-    ctx.line.projectionScope.value = SCOPE_CYCLE[(cur + 1) % SCOPE_CYCLE.length]
+    // Step through the named sets; an unrecognised set restarts the cycle.
+    const key = scopeKey(ctx.line.projectionScope.value)
+    const cur = SCOPE_CYCLE.findIndex(n => scopeKey(LINE_PROJECTION_SCOPES[n]) === key)
+    const next = SCOPE_CYCLE[(cur + 1) % SCOPE_CYCLE.length]
+    ctx.line.projectionScope.value = LINE_PROJECTION_SCOPES[next]
   },
 }
 
