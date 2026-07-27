@@ -87,6 +87,15 @@ export class EditableLine extends KonvexGroup {
   private _rubberActive = false
   private readonly _onWindowUp: (e: MouseEvent) => void
   private readonly _stage: ComputedRef<Konva.Stage | null>
+  /**
+   * The stage our namespaced listeners are actually on.
+   *
+   * Not derivable from {@link _stage} when we need it: that is a computed over
+   * `_parent`, so it already reads `null` once the line has been detached — and
+   * `remove()` then `destroy()` in one tick left every listener attached, since
+   * the async watch below never got to run before `scope.stop()`.
+   */
+  private _attachedStage: Konva.Stage | null = null
   private readonly _altDown = ref(false)
   private readonly _optionsTick = ref(0)
   private _dragging = false
@@ -251,8 +260,8 @@ export class EditableLine extends KonvexGroup {
       // Attach/detach stage listeners as the line enters/leaves a stage.
       watch(
         this._stage,
-        (stage, old) => {
-          if (old) old.off(this._ns)
+        stage => {
+          this.detachStage()
           if (stage) this.attachStage(stage)
         },
         { immediate: true }
@@ -391,7 +400,7 @@ export class EditableLine extends KonvexGroup {
     window.removeEventListener('keydown', this._onKey)
     window.removeEventListener('keyup', this._onKey)
     window.removeEventListener('mouseup', this._onWindowUp, true)
-    this._stage.value?.off(this._ns)
+    this.detachStage()
     this.events.clear()
     super.destroy()
   }
@@ -614,7 +623,14 @@ export class EditableLine extends KonvexGroup {
     return p ? { x: p.x, y: p.y } : null
   }
 
+  /** Drop every listener this line put on the stage. Idempotent. */
+  private detachStage(): void {
+    this._attachedStage?.off(this._ns)
+    this._attachedStage = null
+  }
+
   private attachStage(stage: Konva.Stage): void {
+    this._attachedStage = stage
     stage.on('mousemove' + this._ns, e => {
       // Resync from the live event: a key-up for Alt can be swallowed by the OS
       // (e.g. Alt focuses the menu bar), which would otherwise stick the assist on.
