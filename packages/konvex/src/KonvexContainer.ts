@@ -49,8 +49,7 @@ export abstract class KonvexContainer<
     // a child it no longer owns, and its remove() would rip the node out of us.
     // Adopting means taking it off the old list first. This also covers a re-add
     // to the same container, which would otherwise duplicate the entry.
-    const prev = child._parent.value
-    if (prev instanceof KonvexContainer) prev.releaseChild(child)
+    child._parent.value?._releaseChild(child)
 
     this._children.push(child)
     // Konva's add() accepts Group | Shape (and Stage accepts Layer); the
@@ -67,21 +66,20 @@ export abstract class KonvexContainer<
 
   /** Remove a child from this container (without destroying it). */
   remove(child: Ch): void {
-    const i = this._children.indexOf(child)
-    if (i >= 0) {
-      this._children.splice(i, 1)
-      child.konvaRoot().remove()
-      child._parent.value = undefined
-      this.bumpVersion()
-    }
+    if (!this._children.includes(child)) return
+    this._releaseChild(child)
+    child.konvaRoot().remove()
+    child._parent.value = undefined
   }
 
   /**
-   * Drop `child` from this container's bookkeeping, leaving the Konva node and
-   * the child's `_parent` untouched — the adopting container sets both. Only
-   * {@link add} calls this, on the child's previous parent.
+   * Drop `child` from this container's list and tell watchers, leaving the Konva
+   * node and the child's `_parent` alone — whoever called this owns those. Used
+   * when a child is re-parented ({@link add}), removed, or destroys itself.
+   *
+   * @internal
    */
-  private releaseChild(child: KonvexBase): void {
+  override _releaseChild(child: KonvexBase): void {
     const i = (this._children as readonly KonvexBase[]).indexOf(child)
     if (i < 0) return
     this._children.splice(i, 1)
@@ -107,12 +105,16 @@ export abstract class KonvexContainer<
   }
 
   override destroy(): void {
-    // Snapshot first: each child's destroy() removes its Konva node, and we
-    // clear our own list rather than mutating it mid-iteration.
-    for (const child of [...this._children]) {
+    // Take the list and empty it *before* the cascade: each child's destroy()
+    // now unregisters itself, which would otherwise splice this same array (and
+    // bump the whole ancestor chain) once per child while we walk it. Emptied
+    // first, each of those calls finds nothing and returns — so a container
+    // teardown stays linear and reports as the single change it is.
+    const children = [...this._children]
+    this._children.length = 0
+    for (const child of children) {
       child.destroy()
     }
-    this._children.length = 0
     super.destroy()
   }
 }

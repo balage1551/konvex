@@ -55,11 +55,34 @@ export abstract class KonvexBase {
   abstract konvaRoot(): Konva.Node
 
   /**
-   * Tear down: stop every effect in this object's scope, then destroy the
-   * underlying Konva node (which recursively destroys descendants and removes
-   * their event listeners).
+   * Drop `child` from this object's bookkeeping, touching nothing on the child
+   * itself. A no-op for a leaf; {@link KonvexContainer} overrides it.
+   *
+   * Declared here rather than resolved with an `instanceof KonvexContainer` at
+   * the call sites, because importing the container into this module would close
+   * the cycle `KonvexBase → KonvexContainer → KonvexNode → KonvexBase` and leave
+   * `class KonvexNode extends KonvexBase` reading an uninitialised binding.
+   *
+   * @internal
+   */
+  _releaseChild(_child: KonvexBase): void {}
+
+  /**
+   * Tear down: unregister from the parent, stop every effect in this object's
+   * scope, then destroy the underlying Konva node (which recursively destroys
+   * descendants and removes their event listeners).
+   *
+   * Unregistering matters as much as the teardown: a destroyed child left in its
+   * parent's `children` is pinned in memory, reported as if it were live, and —
+   * since nothing bumps `childrenVersion` — invisible to subtree watchers such as
+   * the stage's auto-sizing and measurement-scale propagation.
    */
   destroy(): void {
+    const parent = this._parent.value
+    if (parent) {
+      parent._releaseChild(this)
+      this._parent.value = undefined
+    }
     this.scope.stop()
     this.konvaRoot().destroy()
   }

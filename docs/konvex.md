@@ -142,7 +142,9 @@ reads the nearest ancestor's unless pinned by writing to it; see
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
 - `on(name, handler): () => void` — typed Konva event; returns an `off`.
 - Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End`, `onPointerDown/Up/Move`, `onDragStart/Move/End`. Each `event.evt` is typed (see [`KonvexEventMap`](#value-types)).
-- `destroy()` — stop watchers + destroy the Konva node.
+- `destroy()` — unregister from the parent, stop watchers, destroy the Konva node.
+  A destroyed node leaves its parent's `children` and bumps `childrenVersion`, so
+  it is neither pinned in memory nor reported as live.
 
 Config: `KonvexNodeConfig` — all the scalar/boolean attributes above (each an
 `AttrSource`) plus `scalable?: boolean`.
@@ -180,7 +182,8 @@ Config: `KonvexShapeConfig extends KonvexNodeConfig` — `fill`, `stroke`,
   destroy it and its `remove()` won't detach it.
 - `remove(child)` — detach without destroying. A no-op for a child this container
   doesn't currently hold.
-- `destroy()` — cascades to children.
+- `destroy()` — cascades to children, then unregisters itself from its own parent.
+  The whole teardown counts as a single `childrenVersion` bump, not one per child.
 
 ---
 
