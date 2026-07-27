@@ -93,7 +93,7 @@ Extends `KonvexGroupConfig`. Fields:
 
 | Member | Type | Description |
 | --- | --- | --- |
-| `line` | `KonvexLine` | The wrapped geometry — style it directly. |
+| `line` | `KonvexLine` | The wrapped geometry — style it directly. Replacing `line.points.value` wholesale is supported: handles, per-point overrides and the selection re-sync to the new points (overrides stay index-aligned; selection indices past the new end are dropped). |
 | `selection` | `Ref<readonly number[]>` | Selected point indices. |
 | `active` | `Ref<boolean>` | "Host-selected"; gates `handles.show: 'whenSelected'`. |
 | `pointInfos` | `ComputedRef<PointInfo[]>` | One row per point (index, x, y, effective options, selected). |

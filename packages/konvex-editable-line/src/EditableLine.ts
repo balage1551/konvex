@@ -225,11 +225,17 @@ export class EditableLine extends KonvexGroup {
       })
       // Apply an assist-mode change without waiting for the next mouse move.
       watch(this.assistShow, () => this.updateAssist())
-      // Keep handles in sync when points are replaced wholesale (e.g. line.points set).
+      // Keep handles in sync when points are replaced wholesale (e.g. line.points
+      // set). Watches the array itself, not its length: a same-count replacement
+      // moves every point and so invalidates every handle just as badly.
       watch(
-        () => this.line.points.value.length,
-        len => {
-          if (len / 2 !== this._handles.length) this.rebuildHandles()
+        () => this.line.points.value,
+        () => {
+          // A handle drag writes points on every move; applyDragDelta has already
+          // moved the handles it touched, and re-positioning mid-drag would fight
+          // Konva's own drag positioning.
+          if (this._dragging) return
+          this.syncToPoints()
         }
       )
       // Attach/detach stage listeners as the line enters/leaves a stage.
@@ -409,6 +415,29 @@ export class EditableLine extends KonvexGroup {
     f[i * 2] = x
     f[i * 2 + 1] = y
     this.line.points.value = f
+  }
+
+  /**
+   * Re-align everything indexed by point number after `points` was replaced
+   * wholesale (`line.points.value = [...]`), which no other code path knows about.
+   *
+   * Handle positions are written at creation only — {@link refreshHandles} restyles
+   * but never moves — so without this a same-count replacement leaves every handle
+   * at its old coordinate. That is not merely cosmetic: a handle drag derives its
+   * delta from the handle's own position, so the first drag afterwards jumps the
+   * line by however far the handle was stale.
+   */
+  private syncToPoints(): void {
+    const n = this.pointCount
+    // Per-point overrides are index-based; drop rows past the end, pad new ones.
+    while (this._options.length > n) this._options.pop()
+    while (this._options.length < n) this._options.push(undefined)
+    // Selection likewise: an out-of-range index survives into pointAt() as NaN.
+    const sel = this.selection.value.filter(i => i < n)
+    if (sel.length !== this.selection.value.length) this.selection.value = sel
+    // A changed count needs new handles, which are created at the right spot.
+    if (n !== this._handles.length) return this.rebuildHandles()
+    for (let i = 0; i < n; i++) this._handles[i].position.value = this.pointAt(i)
   }
 
   private rebuildHandles(): void {
