@@ -169,9 +169,17 @@ Config: `KonvexShapeConfig extends KonvexNodeConfig` — `fill`, `stroke`,
 ### `KonvexContainer<T, Ch>` — Stage / Layer / Group
 
 - `children: readonly Ch[]`
-- `childrenVersion: number` — reactive; bumps on any add/remove (Konva fires no child-add event).
-- `add(child, index?): Ch` — add, optionally at a z-index.
-- `remove(child)` — detach without destroying.
+- `childrenVersion: number` — reactive; bumps on any add/remove here *or* in any
+  descendant container, since the bump bubbles up the ancestor chain. (Konva's own
+  `add` event fires only on the immediate parent, so this is what subtree-wide
+  watchers use.)
+- `add(child, index?): Ch` — add, optionally at a z-index. **Re-parents** a child
+  that already has a parent: it is taken off the old container's `children` and
+  moved in Konva, and both containers bump their `childrenVersion`. A child is
+  therefore only ever in one container, so the old parent's `destroy()` won't
+  destroy it and its `remove()` won't detach it.
+- `remove(child)` — detach without destroying. A no-op for a child this container
+  doesn't currently hold.
 - `destroy()` — cascades to children.
 
 ---

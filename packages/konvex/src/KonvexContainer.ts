@@ -41,8 +41,17 @@ export abstract class KonvexContainer<
     return this._version.value
   }
 
-  /** Add a child, optionally at a specific z-index. */
+  /** Add a child, optionally at a specific z-index. Re-parents if it has a parent. */
   add(child: Ch, index?: number): Ch {
+    // Konva's own add() moves an already-parented node for us, but the previous
+    // konvex parent would go on listing it — and a child sitting in two
+    // `_children` arrays corrupts both: the old parent's destroy() would destroy
+    // a child it no longer owns, and its remove() would rip the node out of us.
+    // Adopting means taking it off the old list first. This also covers a re-add
+    // to the same container, which would otherwise duplicate the entry.
+    const prev = child._parent.value
+    if (prev instanceof KonvexContainer) prev.releaseChild(child)
+
     this._children.push(child)
     // Konva's add() accepts Group | Shape (and Stage accepts Layer); the
     // concrete subclasses constrain `Ch`, so the cast is safe here.
@@ -65,6 +74,18 @@ export abstract class KonvexContainer<
       child._parent.value = undefined
       this.bumpVersion()
     }
+  }
+
+  /**
+   * Drop `child` from this container's bookkeeping, leaving the Konva node and
+   * the child's `_parent` untouched — the adopting container sets both. Only
+   * {@link add} calls this, on the child's previous parent.
+   */
+  private releaseChild(child: KonvexBase): void {
+    const i = (this._children as readonly KonvexBase[]).indexOf(child)
+    if (i < 0) return
+    this._children.splice(i, 1)
+    this.bumpVersion()
   }
 
   /**
