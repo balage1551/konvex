@@ -25,6 +25,19 @@ let elSeq = 0
 const DEFAULT_SNAP_THRESHOLD = 10
 
 /**
+ * Whether a Konva click/dblclick came from the primary (left) mouse button.
+ *
+ * Konva fires `click` and `dblclick` for *every* button, so an editing gesture
+ * that does not check this will also run on a right-click — and, since
+ * `contextmenu` fires independently, an Alt+right-click would both insert a
+ * point and open the toolbar. Touch never reaches these handlers: Konva maps it
+ * to `tap` / `dbltap`, so the check costs nothing there.
+ */
+function isPrimaryButton(e: { evt: unknown }): boolean {
+  return (e.evt as MouseEvent | undefined)?.button === 0
+}
+
+/**
  * An interactively editable polyline. A `KonvexGroup` owning a `KonvexLine`
  * (the geometry, exposed as {@link line} — style it directly) plus a layer of
  * constant-size drag handles. Selection and point coordinates are reactive so a
@@ -285,6 +298,7 @@ export class EditableLine extends KonvexGroup {
 
     this.line.onDblClick(e => {
       if (!this.breakOnDblClick.value) return
+      if (!isPrimaryButton(e)) return
       // Breaking splits a body segment, so it is meaningful only under
       // `'internal'`. Under a terminal scope the caller has said points may be
       // added at the ends only — projecting a mid-line double-click would drop a
@@ -491,9 +505,9 @@ export class EditableLine extends KonvexGroup {
 
     h.onClick(e => {
       e.cancelBubble = true
-      // Konva fires `click` for any button; selection is a left-click gesture.
-      // Right-click selection is handled by the contextmenu/toolbar path.
-      if ((e.evt as MouseEvent).button !== 0) return
+      // Selection is a left-click gesture; right-click selection is handled by
+      // the contextmenu/toolbar path.
+      if (!isPrimaryButton(e)) return
       const idx = this._handles.indexOf(h)
       if (idx >= 0 && this.effectiveSelectable(idx)) {
         this.select(idx, { extend: (e.evt as MouseEvent).ctrlKey })
@@ -640,6 +654,7 @@ export class EditableLine extends KonvexGroup {
     stage.on('mouseleave' + this._ns, () => this.hideAssist())
     stage.on('click' + this._ns, e => {
       if (!this.addOnAltClick.value || !this.active.value) return
+      if (!isPrimaryButton(e)) return
       if (!(e.evt as MouseEvent).altKey) return
       // only on this line or empty canvas — never on a handle or another shape
       if (e.target !== stage && e.target !== this.line.konvaRoot()) return
@@ -655,6 +670,7 @@ export class EditableLine extends KonvexGroup {
     })
     stage.on('dblclick' + this._ns, e => {
       if (!this.addOnDblClick.value || !this.active.value) return
+      if (!isPrimaryButton(e)) return
       if (e.target !== stage) return // only on empty canvas, not on a shape/handle
       const p = this.localPointer()
       if (!p) return

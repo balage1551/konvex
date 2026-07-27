@@ -58,6 +58,12 @@ Built-in gestures (all configurable — see the config table):
 | Double-click line / stage (`breakOnDblClick` / `addOnDblClick`) | Insert / add a point. |
 | Right-click | Emits a `toolbar-request` event (wire it to a popup toolbar). |
 
+Every editing gesture above is **left-button only**. Konva fires `click` and
+`dblclick` for any mouse button, so a right- or middle-click would otherwise edit
+the line — and since `contextmenu` fires independently, an Alt+right-click would
+both insert a point and open the toolbar. Touch is unaffected: Konva delivers it
+as `tap` / `dbltap`.
+
 Handles and assist helpers keep a **constant on-screen size** by default; use
 `scalableComponents` to opt parts into zoom-scaling.
 
