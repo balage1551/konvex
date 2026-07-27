@@ -18,10 +18,15 @@ export interface LineProjection {
   /** Projection point, in the line's parent (world) coordinate space. */
   point: Vector2d
   /**
-   * Where a point at this projection belongs:
-   * - `0 … n-1` — a real segment, between `p[segment]` and `p[segment+1]` (a body insert);
-   * - `-1` — before the first point (a new first point); the terminal projection at p0;
-   * - `n` — after the last point (a new last point); the terminal projection at p[n].
+   * Where a point at this projection belongs. Which of these can occur is fixed
+   * by the requested scope, never inferred from where the query happened to fall:
+   * - `0 … n-1` — a real segment, between `p[segment]` and `p[segment+1]` (a body
+   *   insert). The only possibility under `'internal'`, including for a query
+   *   beyond either end, whose projection clamps onto the terminal vertex.
+   * - `-1` — before the first point (a new first point); the terminal projection
+   *   at p0. Only under `'start'` / `'terminal'`.
+   * - `n` — after the last point (a new last point); the terminal projection at
+   *   p[n]. Only under `'end'` / `'terminal'`.
    */
   segment: number
   /** Fraction along `segment`, `0 ≤ proportion ≤ 1` (a vertex is 0 on one segment, 1 on the other). */
@@ -196,12 +201,12 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
         best = c
       }
     }
-    if (!best) return undefined
-
-    // Landing on an actual endpoint isn't a body insert — there's no segment to
-    // split past it — so it reports as an extension (a new first / last point).
-    if (best.segment === 0 && best.proportion === 0) return { ...best, segment: -1, proportion: 1 }
-    if (best.segment === n - 1 && best.proportion === 1) return { ...best, segment: n, proportion: 0 }
+    // No promotion to a terminal extension here, even when the projection lands
+    // exactly on p0 / p[n] (which it does for any query beyond either end, since
+    // each segment projection is clamped). This branch is reachable only under
+    // `internal`, and a caller who asked for the body means the body — reporting
+    // an out-of-range segment would silently turn an insert into an extension.
+    // Use `'terminal'` / `'start'` / `'end'` to ask for an extension.
     return best
   }
 

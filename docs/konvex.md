@@ -305,6 +305,12 @@ Methods:
   default) / `'terminal'` (endpoints only) / `'start'` / `'end'`. See
   [`LineProjection`](#value-types).
 
+  The scope alone fixes which `segment` values can come back, and a query beyond
+  either end does not change that: `'internal'` always reports a body segment
+  (`0 … n-1`), clamping onto the terminal vertex, and never the out-of-range
+  `-1` / `n` that mean "extend the line". Ask for an extension with `'start'`,
+  `'end'` or `'terminal'`.
+
 ### `KonvexArrow` (extends `KonvexLine`)
 Config adds: `pointerLength?`, `pointerWidth?`, `pointerAtBeginning?`, `pointerAtEnding?`.
 Members: the same four.

@@ -53,6 +53,12 @@ export interface EditableLineToolbarItem {
   state?: (ctx: EditableLineToolbarContext) => ToolbarItemState
   /** The operation. Invoked only when {@link state} resolves to `'enabled'`. */
   run?: (ctx: EditableLineToolbarContext) => void
+  /**
+   * Keep the bar open after {@link run} instead of dismissing it (default
+   * `false`). For mode toggles and cycles, where the point is to see the new
+   * state and possibly click again.
+   */
+  keepOpen?: boolean
 }
 
 /**

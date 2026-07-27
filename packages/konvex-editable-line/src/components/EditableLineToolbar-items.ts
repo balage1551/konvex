@@ -3,6 +3,7 @@
 // (delete + the six align actions), re-expressed in the item framework so they
 // sit alongside any custom tools a host adds.
 import { h } from 'vue'
+import type { LineProjectionScope } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type {
   EditableLineToolbarContext,
@@ -100,6 +101,41 @@ const toggleClosedItem: EditableLineToolbarItem = {
   },
 }
 
+/**
+ * Where a newly added point may land, as a cycle. The glyph shows the current
+ * scope, so the item doubles as the indicator; the bar stays open so the user
+ * can step round to the one they want in place.
+ */
+const SCOPE_CYCLE: readonly LineProjectionScope[] = ['internal', 'terminal', 'start', 'end']
+const SCOPE_ICON: Record<LineProjectionScope, string> = {
+  internal: 'mdi-ray-vertex',
+  terminal: 'mdi-ray-start-end',
+  start: 'mdi-ray-start',
+  end: 'mdi-ray-end',
+}
+const SCOPE_TITLE: Record<LineProjectionScope, string> = {
+  internal: 'Add points: on the line',
+  terminal: 'Add points: at either end',
+  start: 'Add points: before the start',
+  end: 'Add points: after the end',
+}
+const projectionScopeItem: EditableLineToolbarItem = {
+  id: 'projection-scope',
+  label: 'Where new points land',
+  render: ctx => {
+    const scope = ctx.line.projectionScope.value
+    return h('i', {
+      class: ['eltb-icon', 'mdi', SCOPE_ICON[scope]],
+      title: SCOPE_TITLE[scope],
+    })
+  },
+  keepOpen: true,
+  run: ctx => {
+    const cur = SCOPE_CYCLE.indexOf(ctx.line.projectionScope.value)
+    ctx.line.projectionScope.value = SCOPE_CYCLE[(cur + 1) % SCOPE_CYCLE.length]
+  },
+}
+
 /** All builtin items, keyed by id. Look these up by id in a `ToolbarItemSpec[]`. */
 export const BUILTIN_TOOLBAR_ITEMS: Readonly<Record<string, EditableLineToolbarItem>> = {
   'align-h-start': alignItem(
@@ -148,6 +184,7 @@ export const BUILTIN_TOOLBAR_ITEMS: Readonly<Record<string, EditableLineToolbarI
   simplify: simplifyItem,
   delete: deleteItem,
   'toggle-closed': toggleClosedItem,
+  'projection-scope': projectionScopeItem,
 }
 
 /** The default bar — reproduces the v1 toolbar (six aligns, divider, delete). */

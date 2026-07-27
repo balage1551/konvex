@@ -53,7 +53,7 @@ Built-in gestures (all configurable — see the config table):
 | Ctrl + drag | Constrain the drag to one axis; a dashed guide is shown. |
 | Per-point `movable: 'x'`/`'y'`/`false` | Axis-lock or pin a point. |
 | Drag on empty canvas | **Rubber-band** box select; Ctrl on release extends the selection. |
-| Alt-hover | **Assist** preview: where a new point would land (snaps to the line within `snapThreshold`). |
+| Alt-hover | **Assist** preview: where a new point would land, per `projectionScope` (snaps to the line within `snapThreshold`). |
 | Alt + click (`addOnAltClick`) | Commit the assist — insert on the line or extend at the cursor. |
 | Double-click line / stage (`breakOnDblClick` / `addOnDblClick`) | Insert / add a point. |
 | Right-click | Emits a `toolbar-request` event (wire it to a popup toolbar). |
@@ -80,13 +80,13 @@ Extends `KonvexGroupConfig`. Fields:
 | `selectable` | `boolean` | `true` | Line-wide default selectability. |
 | `pointOptions` | `(PointOptions \| undefined)[]` | — | Per-index overrides; `undefined` inherits. |
 | `handles` | `HandleConfig` | — | `show` (`'always'\|'whenSelected'\|'never'`), `size`, `radius`, `style(state)`. |
-| `assist` | `AssistConfig` | — | `show` (`'always'\|'onAlt'\|'never'`), `scope`, `snapThreshold`. |
+| `assist` | `AssistConfig` | — | `show` (`'always'\|'onAlt'\|'never'`), `scope`, `snapThreshold`. `scope`/`snapThreshold` seed the live `projectionScope`/`snapThreshold` refs and govern insertion, not just the preview. |
 | `dragConstraintLine` | `DragConstraintLineConfig` | — | Axis guide styling (`show`, `color`, `width`, `radius`). |
 | `rubberBand` | `RubberBandConfig` | — | `enabled` (default `true`), `fill`, `stroke`. |
 | `simplification` | `SimplificationThreshold` | `{ angle:5, distance:10 }` | Thresholds for `simplify()`. |
 | `scalableComponents` | `'all' \| 'none' \| ('line'\|'marker'\|'helper')[]` | `['line']` | Which parts scale with zoom. |
-| `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. |
-| `addOnDblClick` | `boolean` | — | Double-click the stage adds a point (snapped if close). |
+| `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. Splitting a segment only makes sense on the body, so this is inert unless `projectionScope` is `'internal'`. |
+| `addOnDblClick` | `boolean` | — | Double-click the stage adds a point, where `projectionScope` says (snapped onto the line if within `snapThreshold`). |
 | `addOnAltClick` | `boolean` | — | Alt+click commits the assist (insert / extend). |
 
 ### Reactive state
@@ -99,6 +99,8 @@ Extends `KonvexGroupConfig`. Fields:
 | `pointInfos` | `ComputedRef<PointInfo[]>` | One row per point (index, x, y, effective options, selected). |
 | `handlesShow` | `Ref<HandleShow>` | Live handle visibility mode. |
 | `assistShow` | `Ref<AssistShow>` | Live assist visibility mode. |
+| `projectionScope` | `Ref<LineProjectionScope>` | Live: where an added point may land. `'internal'` always splits a body segment (never extends, wherever the cursor is); `'start'`/`'end'`/`'terminal'` always extend at that end (never split). Every add gesture and the assist preview read this one value, so they cannot disagree. Seeded from `assist.scope`. |
+| `snapThreshold` | `Ref<number>` | Live: distance within which an inserted point snaps onto the line. Seeded from `assist.snapThreshold`. |
 | `scalableComponents` | `Ref<ScalableComponents>` | Live zoom-scaling set. |
 | `defaultMovable` | `Ref<PointMovement>` | Live line-wide movement default. |
 | `defaultSelectable` | `Ref<boolean>` | Live line-wide selectability default. |
@@ -165,7 +167,12 @@ const items: ToolbarItemSpec[] = [
 
 `align-h-start`, `align-h-center`, `align-h-end`,
 `align-v-start`, `align-v-center`, `align-v-end`,
-`straighten`, `simplify`, `toggle-closed`, `delete`.
+`straighten`, `simplify`, `toggle-closed`, `projection-scope`, `delete`.
+
+`projection-scope` cycles `line.projectionScope` through
+`internal → terminal → start → end`, i.e. where a newly added point may land. Its
+glyph shows the current scope, so it doubles as the indicator, and it keeps the
+bar open so you can step round to the one you want.
 
 Divider tokens: `'|'` or `'separator'`. `DEFAULT_TOOLBAR_ITEMS` is the six
 aligns + `straighten`/`simplify` + `delete`. `BUILTIN_TOOLBAR_ITEMS` is the
@@ -181,8 +188,12 @@ interface EditableLineToolbarItem {
   render: ToolbarItemRender       // 'mdi-…' | {icon,class?} | {component,props?} | (ctx)=>VNodeChild
   state?: (ctx) => 'hidden' | 'disabled' | 'enabled'   // default 'enabled'
   run?:   (ctx) => void                                // called only when 'enabled'
+  keepOpen?: boolean              // default false — leave the bar up after run()
 }
 ```
+
+`keepOpen` suits mode toggles and cycles, where the point is to see the new state
+and possibly click again; everything else dismisses the bar on activation.
 
 `ctx` (`EditableLineToolbarContext`) gives `line`, `selection`, `points`
 (resolved `PointInfo[]`), `pointerWorld`, `pointerScreen`.

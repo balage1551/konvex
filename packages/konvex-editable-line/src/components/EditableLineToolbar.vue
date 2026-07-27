@@ -103,7 +103,7 @@ function hide(): void {
 function activate(entry: Entry): void {
   if (entry.kind !== 'item' || entry.state !== 'enabled' || !ctx.value) return
   entry.item.run?.(ctx.value)
-  hide()
+  if (!entry.item.keepOpen) hide()
 }
 
 // Document listeners live for the component's lifetime and no-op while hidden,

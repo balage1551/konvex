@@ -5,7 +5,7 @@ import { KonvexLine, type LineProjection } from '@balage1551/konvex'
 import { type SimplificationThreshold, simplifyPoints, straightenPoints } from '@balage1551/konvex'
 import { KonvexCircle } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
-import type { Vector2d } from '@balage1551/konvex'
+import type { LineProjectionScope, Vector2d } from '@balage1551/konvex'
 import {
   type AssistShow,
   defaultHandleStyle,
@@ -43,6 +43,14 @@ export class EditableLine extends KonvexGroup {
   // Live behavioural settings (seeded from config; tweakable at runtime).
   readonly handlesShow: Ref<HandleShow>
   readonly assistShow: Ref<AssistShow>
+  /**
+   * Which part of the line points project onto: the body (`'internal'`) or a
+   * terminal extension (`'start'` / `'end'` / `'terminal'`). Governs where an
+   * added point actually lands; the assist is the preview of the same decision.
+   */
+  readonly projectionScope: Ref<LineProjectionScope>
+  /** Distance (world units) within which an inserted point snaps onto the line. */
+  readonly snapThreshold: Ref<number>
   readonly scalableComponents: Ref<ScalableComponents>
   readonly defaultMovable: Ref<PointMovement>
   readonly defaultSelectable: Ref<boolean>
@@ -93,6 +101,8 @@ export class EditableLine extends KonvexGroup {
 
     this.handlesShow = ref(config.handles?.show ?? 'whenSelected')
     this.assistShow = ref(config.assist?.show ?? 'never')
+    this.projectionScope = ref(config.assist?.scope ?? 'internal')
+    this.snapThreshold = ref(config.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
     this.scalableComponents = ref(config.scalableComponents ?? ['line'])
     this.defaultMovable = ref(config.movable ?? 'free')
     this.defaultSelectable = ref(config.selectable ?? true)
@@ -223,8 +233,8 @@ export class EditableLine extends KonvexGroup {
         this.applyScalable()
         this.rebuildHandles()
       })
-      // Apply an assist-mode change without waiting for the next mouse move.
-      watch(this.assistShow, () => this.updateAssist())
+      // Apply an assist-mode / projection change without waiting for a mouse move.
+      watch([this.assistShow, this.projectionScope, this.snapThreshold], () => this.updateAssist())
       // Keep handles in sync when points are replaced wholesale (e.g. line.points
       // set). Watches the array itself, not its length: a same-count replacement
       // moves every point and so invalidates every handle just as badly.
@@ -264,10 +274,15 @@ export class EditableLine extends KonvexGroup {
 
     this.line.onDblClick(e => {
       if (!this.breakOnDblClick.value) return
+      // Breaking splits a body segment, so it is meaningful only under
+      // `'internal'`. Under a terminal scope the caller has said points may be
+      // added at the ends only — projecting a mid-line double-click would drop a
+      // duplicate point on an endpoint, so do nothing at all.
+      if (this.projectionScope.value !== 'internal') return
       e.cancelBubble = true
       const p = this.localPointer()
       if (!p) return
-      const proj = this.line.project(p, this._cfg.assist?.scope ?? 'internal')
+      const proj = this.line.project(p, 'internal')
       if (proj && proj.segment >= 0) this.insertPoint(proj.segment + 1, proj.point)
     })
   }
@@ -608,7 +623,7 @@ export class EditableLine extends KonvexGroup {
       if (e.target !== stage && e.target !== this.line.konvaRoot()) return
       const p = this.localPointer()
       if (!p) return
-      const proj = this.line.project(p, this._cfg.assist?.scope ?? 'internal')
+      const proj = this.line.project(p, this.projectionScope.value)
       if (!proj) {
         this.addPoint(p)
         return
@@ -621,16 +636,13 @@ export class EditableLine extends KonvexGroup {
       if (e.target !== stage) return // only on empty canvas, not on a shape/handle
       const p = this.localPointer()
       if (!p) return
-      const scope = this._cfg.assist?.scope ?? 'internal'
-      const proj = this.line.project(p, scope)
-      const threshold = this._cfg.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD
-      if (proj && proj.segment >= 0 && proj.distance <= threshold) {
-        this.insertPoint(proj.segment + 1, proj.point)
-      } else if (proj && proj.segment < 0) {
-        this.insertPoint(0, p) // before the first point
-      } else {
-        this.addPoint(p) // append (extension or no projection)
-      }
+      // Same resolution as the Alt+click commit and the assist preview — this
+      // path used to reimplement it and fell through to a blind append whenever
+      // the cursor was beyond the snap threshold, ignoring the scope entirely.
+      const proj = this.line.project(p, this.projectionScope.value)
+      if (!proj) return void this.addPoint(p)
+      const { index, point } = this.resolveInsertion(p, proj)
+      this.insertPoint(index, point)
     })
     // Right-click on a handle or on the line asks for the toolbar. An already-
     // selected handle keeps the current (multi-)selection so the toolbar acts on
@@ -730,39 +742,58 @@ export class EditableLine extends KonvexGroup {
     if (!want) return this.hideAssist()
     const cursor = this.localPointer()
     if (!cursor) return this.hideAssist()
-    const proj = this.line.project(cursor, this._cfg.assist?.scope ?? 'internal')
+    const proj = this.line.project(cursor, this.projectionScope.value)
     if (!proj) return this.hideAssist()
     this.showAssist(cursor, proj)
   }
 
   /**
-   * Where a point committed at `cursor`/`proj` would land: prepend / append at
-   * the cursor for a terminal extension, or split the body segment (snapping to
-   * the projection within `snapThreshold`). Shared by the assist marker and the
-   * Alt+click commit so the preview and the result always agree.
+   * Where a point committed at `cursor`/`proj` would land — the single decision
+   * behind every add gesture *and* the assist preview, so the two cannot disagree.
+   *
+   * {@link projectionScope} is the switch, not the shape of `proj`: a scope that
+   * says "ends only" always extends, and `'internal'` always splits a body
+   * segment. Nothing is inferred from the segment index, which is what used to
+   * let an internal insert turn itself into an append whenever the cursor sat
+   * beyond an end.
    */
-  private resolveInsertion(cursor: Vector2d, proj: LineProjection): { index: number; point: Vector2d } {
-    const segCount = this.pointCount - 1
-    if (proj.segment < 0) return { index: 0, point: cursor } // prepend
-    if (proj.segment >= segCount) return { index: this.pointCount, point: cursor } // append
-    const snap = proj.distance <= (this._cfg.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
-    return { index: proj.segment + 1, point: snap ? proj.point : cursor }
+  private resolveInsertion(
+    cursor: Vector2d,
+    proj: LineProjection,
+  ): { index: number; point: Vector2d; terminal: boolean } {
+    const prepend = { index: 0, point: cursor, terminal: true }
+    const append = { index: this.pointCount, point: cursor, terminal: true }
+    switch (this.projectionScope.value) {
+      case 'start':
+        return prepend
+      case 'end':
+        return append
+      // `project` already picked the nearer end; segment says which.
+      case 'terminal':
+        return proj.segment < 0 ? prepend : append
+      default: {
+        // A body insert splits `proj.segment`, snapping onto the line when close.
+        const snap = proj.distance <= this.snapThreshold.value
+        return { index: proj.segment + 1, point: snap ? proj.point : cursor, terminal: false }
+      }
+    }
   }
 
   private showAssist(cursor: Vector2d, proj: LineProjection): void {
-    const target = this.resolveInsertion(cursor, proj).point
-    this._assistMarker.position.value = { x: target.x, y: target.y }
+    const target = this.resolveInsertion(cursor, proj)
+    this._assistMarker.position.value = { x: target.point.x, y: target.point.y }
     this._assistProjection.points.value = [cursor.x, cursor.y, proj.point.x, proj.point.y]
 
-    const wp = this.line.worldPoints()
-    const last = wp.length - 1
-    if (proj.segment < 0 || proj.segment >= last) {
-      // terminal extension: a single leg toward the endpoint (the new segment)
+    // The guide previews the segment(s) the new point would create — read off the
+    // same decision as the commit, so the preview always depicts what will happen.
+    if (target.terminal) {
+      // One new leg, from the endpoint being extended out to the cursor.
       this._assistGuide.points.value = [cursor.x, cursor.y, proj.point.x, proj.point.y]
     } else {
+      const wp = this.line.worldPoints()
       const a = wp[proj.segment]
       const b = wp[proj.segment + 1]
-      this._assistGuide.points.value = [a.x, a.y, cursor.x, cursor.y, b.x, b.y]
+      this._assistGuide.points.value = [a.x, a.y, target.point.x, target.point.y, b.x, b.y]
     }
 
     this._assistMarker.visible.value = true

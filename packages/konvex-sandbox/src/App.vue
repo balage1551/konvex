@@ -212,7 +212,7 @@
                 <v-btn size="small" class="m-btn" @click="unitScale /= 2">scale ÷2</v-btn>
                 <v-btn size="small" class="m-btn" @click="unitScale = 1">scale 1</v-btn>
               </div>
-              <span class="muted">line projection scope (Alt + move over a selected line):</span>
+              <span class="muted">line projection scope:</span>
               <div>
                 <v-btn size="small" class="m-btn" color="amber" @click="cycleProjectionScope">
                   scope: {{ projectionScope }}
@@ -838,6 +838,9 @@ function updateProjection(): void {
 }
 function cycleProjectionScope(): void {
   projectionScope.value = cycle(PROJECTION_SCOPES, projectionScope.value)
+  // Drives both demos: the raw KonvexLine.project() readout below, and every
+  // EditableLine's assist + insertion (they share one setting).
+  editableLines.forEach(el => (el.projectionScope.value = projectionScope.value))
   updateProjection()
 }
 
@@ -969,6 +972,8 @@ function addArrow(): void {
 // Demonstrates the toolbar item framework: the migrated builtins, the
 // selection-independent `toggle-closed`, plus one inline custom tool.
 const toolbarItems: ToolbarItemSpec[] = [
+  'projection-scope',
+  '|',
   'align-h-start',
   'align-h-center',
   'align-h-end',
@@ -1005,12 +1010,18 @@ function addEditableLine(): void {
     selectable: true,
     pointOptions: [{ movable: false }], // pin the first point, to show per-point overrides
     handles: { show: 'whenSelected', size: 12 },
-    assist: { show: 'onAlt', scope: 'internal', snapThreshold: 14 },
+    assist: { show: 'onAlt', scope: projectionScope.value, snapThreshold: 14 },
     // Plain double-click adds/breaks — no Alt. The single-vs-double-click race
     // (the first `click` of a double fires before `dblclick`) is resolved at the
     // host by deferring the empty-canvas deselect; see onStageReady.
     addOnDblClick: true, // dblclick on empty canvas → add a point (snaps to the line if near)
     breakOnDblClick: true, // dblclick on the line → insert a point at the projection
+  })
+  // The toolbar's scope item sets it on the line; mirror it back so the readout
+  // above stays truthful whichever control was used.
+  watch(el.projectionScope, s => {
+    projectionScope.value = s
+    updateProjection()
   })
   editableLines.push(el)
   register(el)
