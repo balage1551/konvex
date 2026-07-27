@@ -69,10 +69,21 @@ ref** (`strokeWidth`, `shadowBlur`, `fontSize`, …), not through the facet prox
 
 ### Measurement scale (`unitScale`)
 
-Every shape has `unitScale` (real-world units per world unit; default 1), set by
-the stage's `scale` prop. Shapes expose derived read-only measurements that use
-it — e.g. `KonvexCircle.scaledArea`, `KonvexLine.scaledLength`. These are
-computed refs: read `.value`.
+Every **node** has `unitScale` (real-world units per world unit; default 1).
+Shapes expose derived read-only measurements that use it — e.g.
+`KonvexCircle.scaledArea`, `KonvexLine.scaledLength`. These are computed refs:
+read `.value`.
+
+`unitScale` is **inherited**, like `effectiveScaleX`: a node with no scale of its
+own reads its parent's, on up to whichever ancestor originates one. The stage's
+`scale` prop originates it on the world, so every descendant — at any depth,
+attached in any order — reads it without anything being propagated. A shape added
+to a deeply nested group later is correct immediately, and so is one that gets
+reparented.
+
+Writing `node.unitScale.value = 2` **pins** that node, overriding what it would
+inherit; its descendants then inherit the pinned value. Useful for a subtree in
+its own units. Assign `undefined` to unpin and resume inheriting.
 
 ### Constant-size nodes (`scalable`)
 
@@ -87,12 +98,12 @@ cumulative (absolute) scale as computed refs.
 
 ```
 KonvexBase                     (scope + destroy; node-agnostic)
-└─ KonvexNode<T>               (transform/visibility refs, events)
+└─ KonvexNode<T>               (transform/visibility refs, events; unitScale)
    ├─ KonvexContainer<T,Ch>    (children: add/remove, childrenVersion)
    │  ├─ KonvexStage           (root; bound to a DOM div; holds Layers)
    │  ├─ KonvexLayer           (holds nodes)
    │  └─ KonvexGroup           (transformable child container; clip)
-   └─ KonvexShape<T>           (fill / stroke / shadow; unitScale)
+   └─ KonvexShape<T>           (fill / stroke / shadow)
       ├─ KonvexRect, KonvexCircle, KonvexEllipse, KonvexRing,
       │  KonvexWedge, KonvexArc, KonvexPath, KonvexTag,
       │  KonvexRegularPolygon, KonvexStar, KonvexImage, KonvexSprite
@@ -123,6 +134,10 @@ KonvexBase                     (scope + destroy; node-agnostic)
 **Read-only computed:** `effectiveScaleX`, `effectiveScaleY`, `clientRect`
 (`{ x, y, width, height }` in parent space).
 
+**Inherited:** `unitScale` `WritableComputedRef<number, number | undefined>` —
+reads the nearest ancestor's unless pinned by writing to it; see
+[Measurement scale](#measurement-scale-unitscale).
+
 **Methods:**
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
 - `on(name, handler): () => void` — typed Konva event; returns an `off`.
@@ -144,7 +159,7 @@ Config: `KonvexNodeConfig` — all the scalar/boolean attributes above (each an
 **Flat shadow refs:** `shadowColor`, `shadowBlur`, `shadowOffset`,
 `shadowOpacity`, `shadowEnabled`, `shadowForStrokeEnabled`.
 
-**Other:** `unitScale` `Ref<number>`; `allowMultipleFills` (plain boolean — when
+**Other:** `allowMultipleFills` (plain boolean — when
 `false`, the default, setting `fill` clears the other Konva fill clusters first).
 
 Config: `KonvexShapeConfig extends KonvexNodeConfig` — `fill`, `stroke`,
@@ -172,7 +187,7 @@ unscaled **overlay** layer, and provides zoom / scroll / world-mode.
 | --- | --- | --- | --- |
 | `contentSize` | `{ width, height } \| 'auto'` | `'auto'` | Content extent in world units (used by all modes except `free`). |
 | `worldMode` | `'free' \| 'elastic' \| 'clipped' \| 'bounded'` | `'elastic'`\* | See below. |
-| `scale` | `number` | `1` | Measurement scale (real units per world unit) → each shape's `unitScale`. |
+| `scale` | `number` | `1` | Measurement scale (real units per world unit) → the world's `unitScale`, inherited by every descendant. |
 | `zoomLevel` | `number` | `1` | Use with `v-model:zoomLevel`. |
 | `zoomMode` | `'steps' \| 'proportional'` | — | Snap to a list, or a generated grid. |
 | `zoomLevels` | `number[]` | `[0.25,0.5,0.75,1,1.5,2,3,4]` | Grid for `'steps'`. |

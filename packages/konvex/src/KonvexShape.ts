@@ -176,14 +176,6 @@ function applyFill(node: Shape, value: FillInput | undefined, allowMultiple: boo
  */
 export abstract class KonvexShape<T extends Shape> extends KonvexNode<T> {
   /**
-   * Measurement scale: real-world units per world unit (default 1). A stage sets
-   * this from its `scale`; the concrete shapes' `scaled*` fields (e.g.
-   * {@link KonvexCircle.scaledArea}) derive from it. Named `unitScale` to avoid
-   * colliding with the transform `scale` on {@link KonvexNode}.
-   */
-  readonly unitScale: Ref<number> = ref(1)
-
-  /**
    * Fill facet (discriminated union). Reads back a normalised {@link Fill};
    * accepts any variant, a colour-string shorthand, a reference, or `undefined`.
    */

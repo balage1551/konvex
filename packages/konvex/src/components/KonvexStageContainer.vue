@@ -8,14 +8,11 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
+import { onBeforeUnmount, onMounted, shallowRef, watch, watchEffect } from 'vue'
 import type Konva from 'konva'
 import { KonvexStage } from '../KonvexStage'
 import { KonvexLayer } from '../KonvexLayer'
 import { KonvexRect } from '../KonvexRect'
-import { KonvexShape } from '../KonvexShape'
-import { KonvexContainer } from '../KonvexContainer'
-import type { KonvexBase } from '../KonvexBase'
 import type { Vector2d } from '../KonvexTypes'
 import {
   DEFAULT_ZOOM_LEVELS,
@@ -36,7 +33,8 @@ const props = withDefaults(
   defineProps<{
     worldMode?: WorldMode
     contentSize?: ContentSize | 'auto'
-    /** Measurement scale: real-world units per world unit. Sets each shape's `unitScale`. */
+    /** Measurement scale: real-world units per world unit. Originates the world's
+     * `unitScale`, which every descendant inherits. */
     scale?: number
     zoomLevel?: number
     zoomMode?: ZoomMode
@@ -387,14 +385,6 @@ function scaledArea(worldArea: number): number {
   return worldArea * props.scale ** 2
 }
 
-// Push the measurement scale down to every shape (recursing into groups).
-function propagateScale(children: readonly KonvexBase[]): void {
-  for (const c of children) {
-    if (c instanceof KonvexShape) c.unitScale.value = props.scale
-    else if (c instanceof KonvexContainer) propagateScale(c.children)
-  }
-}
-
 // --- input handlers (wheel + pinch) ---------------------------------------
 function anchorOf(e: { clientX: number; clientY: number }): Vector2d {
   const rect = viewportEl.value!.getBoundingClientRect()
@@ -536,16 +526,15 @@ watch(
   () => {
     recompute()
     applyTransform()
-    if (world.value) propagateScale(world.value.children)
-  },
-)
-watch(
-  () => props.scale,
-  () => {
-    if (world.value) propagateScale(world.value.children)
   },
 )
 watch(() => props.frame, updateFrame)
+// Originate the measurement scale on the world; every descendant inherits it
+// through `unitScale` (a pull), so nothing has to be propagated on add. Runs on
+// world creation too, hence watchEffect rather than a watch on `scale` alone.
+watchEffect(() => {
+  if (world.value) world.value.unitScale.value = props.scale
+})
 
 defineExpose({
   get stage() {

@@ -138,6 +138,23 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   readonly effectiveScaleY: ComputedRef<number>
 
   /**
+   * Measurement scale: real-world units per world unit (default 1). Shapes'
+   * `scaled*` fields (e.g. {@link KonvexShape}'s subclasses) derive from it.
+   * Named `unitScale` to avoid colliding with the transform {@link scale}.
+   *
+   * *Inherited*, like {@link effectiveScaleX}: a node with no scale of its own
+   * reads its parent's, up to whichever ancestor originates one (typically the
+   * stage's world, from its `scale` prop). Because the lookup is a pull rather
+   * than a value pushed down at add-time, a shape gets the right scale the
+   * instant it is attached — at any depth, in any order, and again on reparent.
+   *
+   * Writing pins this node's own scale, overriding what it would inherit, and
+   * that becomes the value its descendants inherit in turn. Pass `undefined` to
+   * unpin and go back to inheriting.
+   */
+  readonly unitScale: WritableComputedRef<number, number | undefined>
+
+  /**
    * Read-only example: the node's bounding box in its parent's coordinate
    * space. Recomputed whenever the node moves, resizes, or transforms — a
    * demonstration of a value that flows Konva → Vue but can't be set.
@@ -196,6 +213,16 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     this.effectiveScaleY = computed(
       () => (this._parent.value?.effectiveScaleY.value ?? 1) * this.scaleY.value,
     )
+
+    // Same recursive shape as effectiveScale above, minus the accumulation: a
+    // measurement scale is inherited verbatim, not multiplied down the chain.
+    const ownUnitScale = ref<number | undefined>(undefined)
+    this.unitScale = computed({
+      get: () => ownUnitScale.value ?? this._parent.value?.unitScale.value ?? 1,
+      set: v => {
+        ownUnitScale.value = v
+      },
+    })
 
     this.clientRect = readonlyNodeAttr(node, {
       read: n => n.getClientRect({ skipShadow: true }),
