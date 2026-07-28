@@ -28,6 +28,23 @@ A plain value writes once; a `Ref`/getter sets up a watch that pushes every
 change into Konva. Re-assigning a different source tears down the previous
 binding first (they don't stack).
 
+### Two-way by default
+
+The Konva node is the single source of truth: an attribute ref reads and writes
+it directly, keeping no copy. Writes that **bypass** konvex therefore still show
+up — a drag, a `Konva.Transformer`, a `Konva.Tween`, or a plain
+`node.konvaRoot().rotation(45)` — because each ref invalidates itself from
+Konva's own `<attr>Change` event. Computeds over `scaleX`, `effectiveScaleX/Y`,
+`clientRect`, `scalable: false` compensation and `watch`ers all follow.
+
+Two consequences worth knowing:
+
+- The invalidation is wired on the ref's first **read**, so an attribute you only
+  ever write costs no Konva listener.
+- While `scalable` is `false`, `scaleX`/`scaleY` belong to konvex: a scale
+  written from anywhere else is reverted on the next flush (see
+  [Constant-size nodes](#constant-size-nodes-scalable)).
+
 ### Alteration rules
 
 Numeric attributes read a plain `number` but *write* a `NumberParameter`, so a
@@ -92,6 +109,10 @@ a **constant on-screen size** regardless of zoom — its scale is driven to the
 reciprocal of the cumulative ancestor scale. `effectiveScaleX/Y` expose that
 cumulative (absolute) scale as computed refs.
 
+While this is `false`, the node's own `scaleX`/`scaleY` are konvex's to set: a
+scale written from elsewhere — including by a `Konva.Transformer` — is reverted
+on the next flush. Set `scalable` back to `true` to take the scale over.
+
 ---
 
 ## Class hierarchy
@@ -141,7 +162,10 @@ reads the nearest ancestor's unless pinned by writing to it; see
 **Methods:**
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
 - `on(name, handler): () => void` — typed Konva event; returns an `off`.
-- Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End`, `onPointerDown/Up/Move`, `onDragStart/Move/End`. Each `event.evt` is typed (see [`KonvexEventMap`](#value-types)).
+- Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End`, `onPointerDown/Up/Move`, `onDragStart/Move/End`, `onTransformStart/Transform/TransformEnd`. Each `event.evt` is typed (see [`KonvexEventMap`](#value-types)).
+  The `transform*` trio comes from a `Konva.Transformer` the node is attached to;
+  unlike the drag events these do **not** bubble, so bind them on the transformed
+  node itself.
 - `destroy()` — unregister from the parent, stop watchers, destroy the Konva node.
   A destroyed node leaves its parent's `children` and bumps `childrenVersion`, so
   it is neither pinned in memory nor reported as live.
@@ -426,7 +450,7 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
 | `NumberParameter` | see [alteration rules](#alteration-rules) |
 | `VectorParameter` | see [alteration rules](#alteration-rules) |
 | `DragBoundFunc` | `(pos: Vector2d) => Vector2d` |
-| `KonvexEventMap` | maps each event name (`click`, `wheel`, `dragmove`, …) to its DOM event type |
+| `KonvexEventMap` | maps each event name (`click`, `wheel`, `dragmove`, `transform`, …) to its DOM event type |
 
 ### Fill variants
 

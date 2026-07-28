@@ -30,9 +30,11 @@ import type {
  * The design choice that makes everything else simple: **the Konva node is the
  * single source of truth.** We never keep a shadow copy of an attribute. A
  * `customRef` reads straight from the node (`get`) and writes straight to it
- * (`set`), using Vue's `track`/`trigger` to participate in reactivity. When
- * Konva mutates a value on its own (e.g. while dragging), we re-`trigger` from
- * the relevant Konva event so Vue effects re-read the fresh value.
+ * (`set`), using Vue's `track`/`trigger` to participate in reactivity. When the
+ * node is mutated by anyone other than our setter — Konva itself while dragging,
+ * a `Konva.Transformer`, a tween, or plain `node.scaleX(2)` — we re-`trigger`
+ * from Konva's own `<attr>Change` event, so Vue effects re-read the fresh value
+ * instead of serving a stale cached one.
  *
  * Nothing here knows about our class hierarchy — these are plain functions over
  * a Konva node, an effect scope, and a value source.
@@ -47,6 +49,29 @@ function isReactiveSource(value: unknown): value is Ref<unknown> | (() => unknow
   return isRef(value) || typeof value === 'function'
 }
 
+/**
+ * Returns a function that subscribes `trigger` to `events` on `node`, once.
+ *
+ * Called from the ref's `get` rather than at construction time on purpose: only
+ * a ref that has been *read* can have Vue dependents to invalidate, and every
+ * node carries a few dozen of these refs — so an attribute nobody looks at
+ * costs no Konva listener. Each event gets `namespace` so it is dropped with
+ * the node.
+ */
+function attachSync(
+  node: Konva.Node,
+  namespace: string,
+  events: readonly string[],
+  trigger: () => void,
+): () => void {
+  let attached = false
+  return () => {
+    if (attached) return
+    attached = true
+    for (const evt of events) node.on(`${evt}.${namespace}`, () => trigger())
+  }
+}
+
 export interface NodeAttrOptions<TNode, T, W = T> {
   /** Konva accessor name. Defaults to the logical attribute name. */
   konvaKey?: string
@@ -59,9 +84,11 @@ export interface NodeAttrOptions<TNode, T, W = T> {
    */
   write?: (node: TNode, value: W) => void
   /**
-   * Konva events after which the value may have changed *externally* (without
-   * going through our setter) — e.g. `['dragmove', 'dragend']` for `x`/`y`.
-   * We re-trigger the ref on these so Vue re-reads the node.
+   * *Extra* Konva events after which the value may have changed externally
+   * (without going through our setter). `` `${konvaKey}Change` `` is always
+   * watched — Konva fires it from `_setAttr` for every attribute write,
+   * whoever made it — so this is only needed when the value also depends on
+   * *other* attributes (e.g. the `fill` facet, which spans a whole cluster).
    */
   syncOn?: readonly string[]
   /**
@@ -102,12 +129,15 @@ export function nodeAttr<TNode extends Konva.Node, T, W = T>(
   // so re-binding a different source can stop the previous one first.
   let delegateStop: WatchStopHandle | undefined
 
+  // Konva fires `<attr>Change` on every write to `key`, including ones that
+  // never went through this ref — that event *is* the Konva → Vue edge.
+  const syncEvents = [`${key}Change`, ...(options.syncOn ?? [])]
+
   return customRef<T>((track, trigger) => {
-    for (const evt of options.syncOn ?? []) {
-      node.on(`${evt}.kx2attr`, () => trigger())
-    }
+    const sync = attachSync(node, 'kx2attr', syncEvents, trigger)
     return {
       get() {
+        sync()
         track()
         return read(node)
       },
@@ -139,17 +169,20 @@ export function nodeAttr<TNode extends Konva.Node, T, W = T>(
 /**
  * A read-only attribute derived from the node (e.g. `getClientRect()`).
  * It re-reads whenever any of `syncOn` fires; assigning to it is ignored.
+ *
+ * Unlike {@link nodeAttr} there is no single backing attribute to derive a
+ * default `<attr>Change` from, so `syncOn` must list every event that can
+ * invalidate the derived value.
  */
 export function readonlyNodeAttr<TNode extends Konva.Node, T>(
   node: TNode,
   options: { read: (node: TNode) => T; syncOn?: readonly string[] },
 ): Readonly<Ref<T>> {
   return customRef<T>((track, trigger) => {
-    for (const evt of options.syncOn ?? []) {
-      node.on(`${evt}.kx2ro`, () => trigger())
-    }
+    const sync = attachSync(node, 'kx2ro', options.syncOn ?? [], trigger)
     return {
       get() {
+        sync()
         track()
         return options.read(node)
       },
@@ -258,6 +291,7 @@ export interface NumberAttrOptions {
   defaultValue?: number
   /** Clamp/round applied after every write. */
   constraints?: NumberConstraint
+  /** Extra invalidating events; see {@link NodeAttrOptions.syncOn}. */
   syncOn?: readonly string[]
 }
 

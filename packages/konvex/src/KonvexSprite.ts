@@ -49,10 +49,10 @@ export class KonvexSprite extends KonvexShape<Konva.Sprite> {
     this.image = nodeAttr(this._node, 'image', this.scope)
     this.animation = nodeAttr(this._node, 'animation', this.scope)
     this.animations = nodeAttr(this._node, 'animations', this.scope)
+    // Konva advances frameIndex during playback; the ref follows it, like every
+    // other attribute, via `frameIndexChange`.
     this.frameIndex = numberAttr(this._node, 'frameIndex', this.scope, {
       constraints: { min: 0, round: 0 },
-      // Konva advances frameIndex during playback — keep the ref in sync.
-      syncOn: ['frameIndexChange'],
     })
     this.frameRate = numberAttr(this._node, 'frameRate', this.scope, { constraints: { min: 0 } })
     this.frameOffsets = nodeAttr(this._node, 'frameOffsets', this.scope)

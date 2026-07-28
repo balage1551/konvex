@@ -51,6 +51,41 @@ function fromKonvaStops(flat: (number | string)[] | undefined): ColorStop[] {
   return stops
 }
 
+/**
+ * Every Konva attribute {@link readFill} looks at, as change events.
+ *
+ * `nodeAttr` invalidates a ref from its *own* `<attr>Change`, which for `fill`
+ * is only the solid colour — so the facet has to name the rest of the cluster
+ * itself, or an external write to a gradient stop would leave `fill.value`
+ * stale. The point-valued attributes are listed by component (`…PointX`),
+ * because Konva fires the aggregate `…PointChange` only when the pair setter is
+ * the one used, while the components always fire.
+ */
+const FILL_SYNC_EVENTS = [
+  'fillPriorityChange',
+  'fillLinearGradientStartPointXChange',
+  'fillLinearGradientStartPointYChange',
+  'fillLinearGradientEndPointXChange',
+  'fillLinearGradientEndPointYChange',
+  'fillLinearGradientColorStopsChange',
+  'fillRadialGradientStartPointXChange',
+  'fillRadialGradientStartPointYChange',
+  'fillRadialGradientEndPointXChange',
+  'fillRadialGradientEndPointYChange',
+  'fillRadialGradientStartRadiusChange',
+  'fillRadialGradientEndRadiusChange',
+  'fillRadialGradientColorStopsChange',
+  'fillPatternImageChange',
+  'fillPatternXChange',
+  'fillPatternYChange',
+  'fillPatternOffsetXChange',
+  'fillPatternOffsetYChange',
+  'fillPatternScaleXChange',
+  'fillPatternScaleYChange',
+  'fillPatternRotationChange',
+  'fillPatternRepeatChange',
+] as const
+
 function readFill(node: Shape): Fill {
   switch (node.fillPriority()) {
     case 'linear-gradient':
@@ -257,6 +292,7 @@ export abstract class KonvexShape<T extends Shape> extends KonvexNode<T> {
     this.fill = nodeAttr<T, Fill>(node, 'fill', this.scope, {
       read: readFill,
       write: (n, v) => applyFill(n, v, this.allowMultipleFills),
+      syncOn: FILL_SYNC_EVENTS,
     }) as unknown as Ref<Fill, AttrSource<FillInput | undefined>>
     // Konva calls the stroke *colour* `stroke`; we expose it as `strokeColor`
     // and reserve the name `stroke` for the structured facet.

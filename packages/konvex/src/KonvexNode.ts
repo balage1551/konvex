@@ -119,6 +119,10 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
    * When `false`, the node keeps a constant on-screen size regardless of zoom:
    * its own scale is driven to the reciprocal of the cumulative ancestor scale,
    * while its position (and hence its local origin) stays fixed in world space.
+   *
+   * While `false`, {@link scaleX}/{@link scaleY} are konvex's to set: a scale
+   * written from anywhere else (a `Konva.Transformer`, say) is reverted on the
+   * next flush. Set this back to `true` to take the scale over.
    */
   readonly scalable: Ref<boolean> = ref(true)
 
@@ -165,12 +169,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     super(config)
     this._node = markRaw(node)
 
-    // Position is two-way: a drag mutates x/y inside Konva, so we re-read on
-    // drag events. (Binding x/y to an *external* writable ref and pushing drag
-    // results back into it is a later refinement; here drag keeps our own refs
-    // and any read-only views live.)
-    this.x = numberAttr(node, 'x', this.scope, { syncOn: ['dragmove', 'dragend'] })
-    this.y = numberAttr(node, 'y', this.scope, { syncOn: ['dragmove', 'dragend'] })
+    // Every attribute below is two-way: `nodeAttr` re-triggers the ref from
+    // Konva's `<attr>Change`, so a drag, a `Konva.Transformer`, a tween or a
+    // direct `node.rotation(45)` all invalidate it — not just our own setter.
+    // (Binding x/y to an *external* writable ref and pushing drag results back
+    // into it is a later refinement; here drag keeps our own refs and any
+    // read-only views live.)
+    this.x = numberAttr(node, 'x', this.scope)
+    this.y = numberAttr(node, 'y', this.scope)
     this.width = numberAttr(node, 'width', this.scope, { constraints: { min: 0 } })
     this.height = numberAttr(node, 'height', this.scope, { constraints: { min: 0 } })
     this.offsetX = numberAttr(node, 'offsetX', this.scope)
@@ -224,17 +230,21 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
       },
     })
 
+    // Every attribute of this node's own transform, since any of them moves the
+    // box — a drag needs no separate entry, as it goes through x/y.
     this.clientRect = readonlyNodeAttr(node, {
       read: n => n.getClientRect({ skipShadow: true }),
       syncOn: [
-        'dragmove',
-        'dragend',
         'xChange',
         'yChange',
         'widthChange',
         'heightChange',
+        'offsetXChange',
+        'offsetYChange',
         'scaleXChange',
         'scaleYChange',
+        'skewXChange',
+        'skewYChange',
         'rotationChange',
       ],
     })
@@ -247,11 +257,25 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     // reciprocal, so this node's absolute scale stays 1 (constant on screen).
     // Reads are memoized via the effectiveScale chain, so this re-runs only when
     // an actual ancestor scale changes, or when the node is (re)parented.
+    //
+    // Our own scale is a dependency too, so a write from outside (a
+    // `Konva.Transformer` resizing us, say) is re-asserted instead of silently
+    // holding until the next ancestor change. It settles in one extra pass: the
+    // corrective write lands on the value the watch just computed, and writing a
+    // number equal to the live one is dropped by `numberAttr`. Reading it only
+    // while compensating keeps a normal (scalable) node from subscribing to its
+    // own scale for nothing.
     const ancestorScaleX = computed(() => this._parent.value?.effectiveScaleX.value ?? 1)
     const ancestorScaleY = computed(() => this._parent.value?.effectiveScaleY.value ?? 1)
     this.scope.run(() =>
       watch(
-        [this.scalable, ancestorScaleX, ancestorScaleY],
+        [
+          this.scalable,
+          ancestorScaleX,
+          ancestorScaleY,
+          () => (this.scalable.value ? 1 : this.scaleX.value),
+          () => (this.scalable.value ? 1 : this.scaleY.value),
+        ],
         ([scalable, sx, sy]) => {
           if (!scalable) {
             this.scaleX.value = sx ? 1 / sx : 1
@@ -365,5 +389,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   }
   onDragEnd(handler: KonvexEventHandler<'dragend'>): () => void {
     return this.on('dragend', handler)
+  }
+  onTransformStart(handler: KonvexEventHandler<'transformstart'>): () => void {
+    return this.on('transformstart', handler)
+  }
+  onTransform(handler: KonvexEventHandler<'transform'>): () => void {
+    return this.on('transform', handler)
+  }
+  onTransformEnd(handler: KonvexEventHandler<'transformend'>): () => void {
+    return this.on('transformend', handler)
   }
 }

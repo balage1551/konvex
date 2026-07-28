@@ -677,8 +677,8 @@
                 <div class="group-title">More attributes</div>
                 <div>
                   <v-btn size="small" class="m-btn" @click="cycleGco">gco: {{ gcoText }}</v-btn>
-                  <v-btn size="small" class="m-btn" :color="selected.dragBoundFunc.value ? 'amber' : '#888888'" @click="toggleDragLock">
-                    drag: {{ selected.dragBoundFunc.value ? 'lock-Y' : 'free' }}
+                  <v-btn size="small" class="m-btn" :color="dragLockOn ? 'amber' : '#888888'" @click="toggleDragLock">
+                    drag: {{ dragLockOn ? 'lock-Y' : 'free' }}
                   </v-btn>
                 </div>
                 <div v-if="asShape">
@@ -1127,6 +1127,11 @@ function deleteSelected(): void {
   select(undefined)
   world.remove(s)
   s.destroy()
+  if (dragLocked.value.has(s)) {
+    const next = new Set(dragLocked.value)
+    next.delete(s)
+    dragLocked.value = next
+  }
   count.value = world.children.length
 }
 
@@ -1201,10 +1206,24 @@ function cycleGco(): void {
 }
 const gcoText = computed(() => selected.value?.globalCompositeOperation.value || 'source-over')
 
+// Which nodes *we* locked. Not derivable from `dragBoundFunc.value`: in bounded
+// and clipped modes the stage installs its own for the duration of a drag, so the
+// ref reads non-empty mid-drag on a node the user never locked.
+// Swapped rather than mutated: a deep `ref` would try to unwrap the nodes inside.
+const dragLocked = shallowRef<ReadonlySet<AnyNode>>(new Set())
+const dragLockOn = computed(() => !!selected.value && dragLocked.value.has(selected.value))
+
 function toggleDragLock(): void {
   if (!selected.value) return
   const s = selected.value
-  s.dragBoundFunc.value = s.dragBoundFunc.value ? undefined : pos => ({ x: pos.x, y: s.y.value })
+  const next = new Set(dragLocked.value)
+  if (next.delete(s)) {
+    s.dragBoundFunc.value = undefined
+  } else {
+    next.add(s)
+    s.dragBoundFunc.value = pos => ({ x: pos.x, y: s.y.value })
+  }
+  dragLocked.value = next
 }
 
 function mutateStrokeRef(): void {

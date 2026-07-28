@@ -267,6 +267,12 @@ export interface KonvexEventMap {
   dragstart: MouseEvent | TouchEvent
   dragmove: MouseEvent | TouchEvent
   dragend: MouseEvent | TouchEvent
+  // Fired on a node by a `Konva.Transformer` that has it attached. Unlike the
+  // drag events these do *not* bubble — Konva fires them on the node itself —
+  // so they must be bound on the transformed node, not on an ancestor.
+  transformstart: MouseEvent | TouchEvent
+  transform: MouseEvent | TouchEvent
+  transformend: MouseEvent | TouchEvent
 }
 
 /** A bindable konvex event name. */
