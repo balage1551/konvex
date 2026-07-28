@@ -66,14 +66,20 @@ export abstract class KonvexContainer<
     // to the same container, which would otherwise duplicate the entry.
     child._parent.value?._releaseChild(child)
 
-    this._children.push(child)
-    // Konva's add() accepts Group | Shape (and Stage accepts Layer); the
-    // concrete subclasses constrain `Ch`, so the cast is safe here.
+    // Konva's add() accepts Group | Shape (and Stage accepts Layer); `Ch` is
+    // bound to exactly that per subclass, so the cast only bridges the generic.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this._node.add(child.konvaRoot() as any)
     if (index !== undefined) {
       child.konvaRoot().zIndex(index)
     }
+    // Insert where Konva actually put it, rather than appending: `children` maps
+    // to z-order, and pushing while Konva spliced the node to `index` left the
+    // two disagreeing — so `children[i]` was not the i-th node on screen, and
+    // anything indexing one against the other (a z-order control, a hit test)
+    // silently addressed the wrong object. Read back rather than trusting
+    // `index`, because Konva clamps an out-of-range one.
+    this._children.splice(child.konvaRoot().zIndex(), 0, child)
     child._parent.value = this as unknown as KonvexNode<Konva.Node>
     this.bumpVersion()
     this.signals.emit('child-added', { child, index: child.konvaRoot().zIndex() })
