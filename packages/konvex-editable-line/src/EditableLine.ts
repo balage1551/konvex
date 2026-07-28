@@ -18,11 +18,7 @@ import {
   type ScalableComponent,
   type ScalableComponents,
 } from './EditableLine-types'
-import {
-  EditableLineEmitter,
-  type EditableLineEventMap,
-  type EditableLinePointMove,
-} from './EditableLine-events'
+import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-events'
 
 /** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
 const DEFAULT_SNAP_THRESHOLD = 10
@@ -369,7 +365,7 @@ export class EditableLine extends KonvexGroup {
     this.setPointCoord(index, p.x, p.y)
     const h = this._handles[index]
     if (h) h.position.value = { x: p.x, y: p.y }
-    this.events.emit('point-moved', { index, point: { x: p.x, y: p.y }, from, dragging: false })
+    this.events.emit('point-moved', { index, point: { x: p.x, y: p.y }, from })
   }
 
   select(index: number, opts: { extend?: boolean } = {}): void {
@@ -581,6 +577,14 @@ export class EditableLine extends KonvexGroup {
     h.onDragEnd(() => {
       this._dragging = false
       this._dragAnchorIndex = -1
+      // One report per point the drag actually moved, measured from where the
+      // drag started — a drag that ends where it began says nothing.
+      for (const o of this._dragOrigins) {
+        const p = this.pointAt(o.index)
+        if (p.x !== o.x || p.y !== o.y) {
+          this.events.emit('point-moved', { index: o.index, point: p, from: { x: o.x, y: o.y } })
+        }
+      }
       this._dragOrigins = []
       this.hideDragConstraint()
     })
@@ -624,32 +628,18 @@ export class EditableLine extends KonvexGroup {
    */
   private applyDragDelta(dx: number, dy: number): void {
     const f = [...this.line.points.value]
-    const moved: EditableLinePointMove[] = []
     for (const o of this._dragOrigins) {
       const mv = this.effectiveMovable(o.index)
       if (mv === false) continue
       const nx = o.x + (mv === 'y' ? 0 : dx)
       const ny = o.y + (mv === 'x' ? 0 : dy)
-      // `from` is the previous frame, not the drag origin, so a handler can
-      // accumulate deltas; a frame that moves a point nowhere stays silent.
-      const px = f[o.index * 2]
-      const py = f[o.index * 2 + 1]
-      if (px !== nx || py !== ny) {
-        moved.push({
-          index: o.index,
-          point: { x: nx, y: ny },
-          from: { x: px, y: py },
-          dragging: true,
-        })
-      }
       f[o.index * 2] = nx
       f[o.index * 2 + 1] = ny
       const hh = this._handles[o.index]
       if (hh) hh.position.value = { x: nx, y: ny }
     }
     this.writePoints(f)
-    // After the write, so the line reads settled inside a handler.
-    for (const m of moved) this.events.emit('point-moved', m)
+    // No event per frame: `point-moved` reports the landed move, from dragEnd.
   }
 
   /** Draw (or hide) the axis guide through the dragged point at (x, y). */

@@ -31,19 +31,19 @@ export interface EditableLinePointChange {
   count: number
 }
 
-/** A point changed position. */
+/**
+ * A point finished moving.
+ *
+ * One per moved point, once the move has landed — a drag reports on release, not
+ * per frame, so this is safe to persist or push onto an undo stack. (A streaming
+ * `point-moving` counterpart may follow; it does not exist yet.)
+ */
 export interface EditableLinePointMove {
   index: number
   /** Where it is now. */
   point: Vector2d
-  /** Where it was immediately before — the previous frame, during a drag. */
+  /** Where it was before the move — for a drag, where the drag started. */
   from: Vector2d
-  /**
-   * `true` for every frame of a drag, so this is a stream: expect one per moved
-   * point per frame, and use the line's `dragend` for the settled value.
-   * `false` for a one-shot move (`movePoint`, `straightenSelection`).
-   */
-  dragging: boolean
 }
 
 /**

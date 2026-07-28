@@ -10,12 +10,12 @@ The line's points are what an `EditableLine` manages, and a host had no way to b
 | --- | --- | --- |
 | `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, the click/double-click add gestures |
 | `point-removed` | `{ index, point, count }` — where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
-| `point-moved` | `{ index, point, from, dragging }` | a drag, `movePoint`, `straightenSelection` |
+| `point-moved` | `{ index, point, from }` | a drag (on release), `movePoint`, `straightenSelection` |
 | `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` |
 
 Each is emitted after the edit has settled, so a handler reading `pointCount`/`pointInfos` sees the result rather than a half-applied state. A move to a point's current position emits nothing.
 
-`point-moved` during a drag is a **stream**: one event per moved point per frame, with `from` being the previous frame so deltas accumulate, and a multi-point drag moves the whole selection at once. `dragging` separates that from a settled one-shot move.
+`point-moved` is a settled fact rather than a stream: a drag reports on release, once per point it moved, with `from` being where the drag started — so the payload can be persisted or pushed onto an undo stack as it stands, and a drag that ends where it began says nothing. Live geometry during a drag is still `line.points`/`pointInfos`; a streaming `point-moving` counterpart may follow.
 
 `points-replaced` is deliberately coarse. When the array is swapped wholesale the old and new points cannot be matched up without guessing, so no per-point events are invented for it — index-keyed state should be re-read. `simplify()` reports the same way: which points survive a reshape is not expressible as a sequence of removals.
 

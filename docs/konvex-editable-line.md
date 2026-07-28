@@ -232,7 +232,7 @@ every one is emitted *after* the edit has settled: a handler can read
 | --- | --- | --- |
 | `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
 | `point-removed` | `{ index, point, count }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
-| `point-moved` | `{ index, point, from, dragging }` | a drag (`dragging: true`), `movePoint`, `straightenSelection` |
+| `point-moved` | `{ index, point, from }` | a drag (**on release**), `movePoint`, `straightenSelection` |
 | `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` |
 
 ```ts
@@ -244,10 +244,12 @@ el.events.on('points-replaced', () => store.reload(el.pointInfos.value))
 
 Three things worth knowing:
 
-- **`point-moved` during a drag is a stream** — one event per moved point per
-  frame, with `from` being the *previous frame* so deltas accumulate. A
-  multi-point drag moves the whole selection, so expect several per frame. For the
-  settled value, either filter on `dragging` or use the line's `dragend`.
+- **A drag reports once, when it lands.** `point-moved` is a settled fact, not a
+  stream: no event per frame, and `from` is where the drag *started*, so the
+  payload is safe to persist or push onto an undo stack as-is. A multi-point drag
+  emits one event per point it moved, and a drag that ends where it began emits
+  nothing. (A streaming `point-moving` counterpart may follow; it does not exist
+  yet — until then, watch `line.points` or `pointInfos` for live geometry.)
 - **`points-replaced` is deliberately coarse.** When the array is swapped
   wholesale, the old and new points cannot be matched up without guessing, so
   konvex does not invent per-point events for it: treat any index-keyed state you
@@ -270,7 +272,7 @@ Three things worth knowing:
 - `HandleShow` = `'always' | 'whenSelected' | 'never'`; `AssistShow` = `'always' | 'onAlt' | 'never'`.
 - `ScalableComponent` = `'line' | 'marker' | 'helper'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
 - `EditableLinePointChange` = `{ index, point, count }`; `EditableLinePointMove` =
-  `{ index, point, from, dragging }`; `EditableLinePointsReplaced` = `{ count }` —
+  `{ index, point, from }`; `EditableLinePointsReplaced` = `{ count }` —
   see [point events](#point-events).
 - `ToolbarItemState` = `'hidden' | 'disabled' | 'enabled'`.
 - `ToolbarItemSpec` = `EditableLineToolbarItem | string`.
