@@ -149,6 +149,19 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
     this.scaledArea = computed(() => this.pixelArea.value * this.unitScale.value ** 2)
   }
 
+  /**
+   * A line's box comes from its geometry, not from `width`/`height`, so
+   * `clientRect` has to follow the points — otherwise editing a polyline in place
+   * (which is exactly what `EditableLine` does) leaves the box where the line
+   * used to be. `tension`/`closed` reshape the curve through the same points.
+   */
+  protected override trackGeometry(): void {
+    void this.points.value
+    void this.tension.value
+    void this.closed.value
+    void this.bezier.value
+  }
+
   /** The `points` transformed into the line's parent (world) coordinate space. */
   worldPoints(): Vector2d[] {
     const flat = this.points.value

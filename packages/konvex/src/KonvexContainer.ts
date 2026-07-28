@@ -36,6 +36,21 @@ export abstract class KonvexContainer<
     return this._children
   }
 
+  /**
+   * A container's box is the union of its children's, so `clientRect` has to
+   * follow the whole subtree — which is what it could not do while it depended
+   * on a list of *this* node's Konva events: moving a child changes no attribute
+   * here, so a group's box silently kept the value it had when the child was
+   * added. Reading each child's own `clientRect` recurses (a child container
+   * tracks its children in turn) and `childrenVersion` covers the list itself.
+   */
+  protected override trackGeometry(): void {
+    void this.childrenVersion
+    for (const child of this._children) {
+      if (child instanceof KonvexNode) void child.clientRect.value
+    }
+  }
+
   /** Reactive value that changes whenever a child is added or removed. */
   get childrenVersion(): number {
     return this._version.value

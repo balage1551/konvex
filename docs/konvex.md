@@ -251,7 +251,13 @@ KonvexBase                     (scope + destroy + bindTo; node-agnostic)
 `position`, `size`, `scale`, `skew`, `offset`.
 
 **Read-only computed:** `effectiveScaleX`, `effectiveScaleY`, `clientRect`
-(`{ x, y, width, height }` in parent space).
+(`{ x, y, width, height }` in parent space). `clientRect` re-reads whenever
+anything that moves the box changes: every attribute of the node's own transform,
+a container's whole subtree (children, and their children — including a child
+being hidden or shown, which Konva takes in or out of the union), and a line's
+points.
+Other shapes' geometry attributes (`radius`, `data`, `text`, …) do not yet
+invalidate it — override `trackGeometry()` to add them.
 
 **Inherited:** `unitScale` `WritableComputedRef<number, number | undefined>` —
 reads the nearest ancestor's unless pinned by writing to it; see

@@ -9,13 +9,7 @@ import {
 } from 'vue'
 import type Konva from 'konva'
 import { KonvexBase, type KonvexBaseConfig } from './KonvexBase'
-import {
-  nodeAttr,
-  numberAttr,
-  readonlyNodeAttr,
-  vectorParam,
-  type KonvaEventOptions,
-} from './WrapperTools'
+import { nodeAttr, numberAttr, vectorParam, type KonvaEventOptions } from './WrapperTools'
 import { registerKonvexNode, unregisterKonvexNode } from './KonvexRegistry'
 import type {
   AttrSource,
@@ -160,11 +154,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   readonly unitScale: WritableComputedRef<number, number | undefined>
 
   /**
-   * Read-only example: the node's bounding box in its parent's coordinate
-   * space. Recomputed whenever the node moves, resizes, or transforms — a
-   * demonstration of a value that flows Konva → Vue but can't be set.
+   * The node's bounding box in its parent's coordinate space — a value that
+   * flows Konva → Vue but cannot be set.
+   *
+   * Re-read whenever anything that moves the box changes: every attribute of
+   * this node's own transform, plus whatever {@link trackGeometry} adds for this
+   * kind of node — a container's whole subtree, a line's points.
    */
-  readonly clientRect: Readonly<Ref<{ x: number; y: number; width: number; height: number }>>
+  readonly clientRect: ComputedRef<{ x: number; y: number; width: number; height: number }>
 
   protected constructor(node: T, config: KonvexNodeConfig = {}) {
     super(config)
@@ -234,23 +231,33 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
       },
     })
 
-    // Every attribute of this node's own transform, since any of them moves the
-    // box — a drag needs no separate entry, as it goes through x/y.
-    this.clientRect = readonlyNodeAttr(node, {
-      read: n => n.getClientRect({ skipShadow: true }),
-      syncOn: [
-        'xChange',
-        'yChange',
-        'widthChange',
-        'heightChange',
-        'offsetXChange',
-        'offsetYChange',
-        'scaleXChange',
-        'scaleYChange',
-        'skewXChange',
-        'skewYChange',
-        'rotationChange',
-      ],
+    // Depends on the refs rather than a hand-kept list of Konva event names: the
+    // refs already invalidate from `<attr>Change` (whoever wrote them), so this
+    // follows a drag, a Transformer and a direct Konva write alike — and cannot
+    // drift out of step with the attribute list the way a literal list does.
+    // `trackGeometry` adds whatever else moves the box for this kind of node.
+    this.clientRect = computed(() => {
+      void this.x.value
+      void this.y.value
+      void this.width.value
+      void this.height.value
+      void this.offsetX.value
+      void this.offsetY.value
+      void this.scaleX.value
+      void this.scaleY.value
+      void this.skewX.value
+      void this.skewY.value
+      void this.rotation.value
+      // Visibility, for the *parent's* sake: Konva skips an invisible child when
+      // it unions a container's box (`Container.getClientRect`), while a shape's
+      // own box ignores its visibility. So hiding a child changes nothing here
+      // but shrinks the box above — and a container reaches that through this
+      // ref, since it depends on its children's `clientRect`. Transient
+      // adornments (an assist marker, a rubber band) inflate an ancestor's box
+      // while shown and must restore it when hidden.
+      void this.visible.value
+      this.trackGeometry()
+      return node.getClientRect({ skipShadow: true })
     })
 
     this.applyConfig(config, NODE_ATTR_KEYS)
@@ -304,6 +311,18 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
       }
     }
   }
+
+  /**
+   * Read whatever *else* determines this node's bounding box, so {@link clientRect}
+   * re-reads when it changes. Called from inside that computed, so reading a ref
+   * here is all it takes to become a dependency.
+   *
+   * The base implementation is empty: {@link clientRect} already follows every
+   * attribute of the node's own transform. Override it where the box depends on
+   * more — a container's children ({@link KonvexContainer}), or a shape whose
+   * geometry lives in its own attributes ({@link KonvexLine}'s `points`).
+   */
+  protected trackGeometry(): void {}
 
   /** The wrapped Konva node (escape hatch for direct Konva calls). */
   konvaRoot(): T {
