@@ -20,8 +20,6 @@ import {
 } from './EditableLine-types'
 import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-events'
 
-let elSeq = 0
-
 /** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
 const DEFAULT_SNAP_THRESHOLD = 10
 
@@ -84,7 +82,6 @@ export class EditableLine extends KonvexGroup {
   readonly pointInfos: ComputedRef<PointInfo[]>
 
   private readonly _cfg: EditableLineConfig
-  private readonly _ns: string
   private readonly _handleGroup: KonvexGroup
   private readonly _assistGroup: KonvexGroup
   private readonly _assistMarker: KonvexCircle
@@ -106,14 +103,16 @@ export class EditableLine extends KonvexGroup {
   private readonly _onWindowUp: (e: MouseEvent) => void
   private readonly _stage: ComputedRef<Konva.Stage | null>
   /**
-   * The stage our namespaced listeners are actually on.
+   * `off` for each listener {@link attachStage} put on the stage.
    *
-   * Not derivable from {@link _stage} when we need it: that is a computed over
-   * `_parent`, so it already reads `null` once the line has been detached — and
-   * `remove()` then `destroy()` in one tick left every listener attached, since
-   * the async watch below never got to run before `scope.stop()`.
+   * Each closure holds the node it was bound to, so detaching needs no record of
+   * *which* stage we attached to — which is what used to go wrong: `remove()`
+   * then `destroy()` in one tick left every listener attached, because the only
+   * handle on them was a namespace plus a stage looked up through `_parent`,
+   * already `null` by then. These come from `bindTo`, so konvex also drops them
+   * when this line is destroyed, whatever order that happens in.
    */
-  private _attachedStage: Konva.Stage | null = null
+  private _stageOffs: (() => void)[] = []
   private readonly _altDown = ref(false)
   private readonly _optionsTick = ref(0)
   private _dragging = false
@@ -124,7 +123,6 @@ export class EditableLine extends KonvexGroup {
   constructor(config: EditableLineConfig = {}) {
     super(config)
     this._cfg = config
-    this._ns = `.editableline${++elSeq}`
 
     this.handlesShow = ref(config.handles?.show ?? 'whenSelected')
     this.assistShow = ref(config.assist?.show ?? 'never')
@@ -645,23 +643,22 @@ export class EditableLine extends KonvexGroup {
 
   /** Drop every listener this line put on the stage. Idempotent. */
   private detachStage(): void {
-    this._attachedStage?.off(this._ns)
-    this._attachedStage = null
+    for (const off of this._stageOffs) off()
+    this._stageOffs = []
   }
 
   private attachStage(stage: Konva.Stage): void {
-    this._attachedStage = stage
-    stage.on('mousemove' + this._ns, e => {
+    this._stageOffs.push(this.bindTo(stage, 'mousemove', e => {
       // Resync from the live event: a key-up for Alt can be swallowed by the OS
       // (e.g. Alt focuses the menu bar), which would otherwise stick the assist on.
-      this._altDown.value = (e.evt as MouseEvent).altKey
+      this._altDown.value = e.evt.altKey
       this.updateAssist()
-    })
-    stage.on('mouseleave' + this._ns, () => this.hideAssist())
-    stage.on('click' + this._ns, e => {
+    }))
+    this._stageOffs.push(this.bindTo(stage, 'mouseleave', () => this.hideAssist()))
+    this._stageOffs.push(this.bindTo(stage, 'click', e => {
       if (!this.addOnAltClick.value || !this.active.value) return
       if (!isPrimaryButton(e)) return
-      if (!(e.evt as MouseEvent).altKey) return
+      if (!e.evt.altKey) return
       // only on this line or empty canvas — never on a handle or another shape
       if (e.target !== stage && e.target !== this.line.konvaRoot()) return
       const p = this.localPointer()
@@ -673,8 +670,8 @@ export class EditableLine extends KonvexGroup {
       }
       const { index, point } = this.resolveInsertion(p, proj)
       this.insertPoint(index, point)
-    })
-    stage.on('dblclick' + this._ns, e => {
+    }))
+    this._stageOffs.push(this.bindTo(stage, 'dblclick', e => {
       if (!this.addOnDblClick.value || !this.active.value) return
       if (!isPrimaryButton(e)) return
       if (e.target !== stage) return // only on empty canvas, not on a shape/handle
@@ -687,17 +684,17 @@ export class EditableLine extends KonvexGroup {
       if (!proj) return void this.addPoint(p)
       const { index, point } = this.resolveInsertion(p, proj)
       this.insertPoint(index, point)
-    })
+    }))
     // Right-click on a handle or on the line asks for the toolbar. An already-
     // selected handle keeps the current (multi-)selection so the toolbar acts on
     // all of it; an unselected, selectable handle is selected first — respecting
     // Ctrl, exactly like a left-click — for a quick right-click-to-act gesture.
-    stage.on('contextmenu' + this._ns, e => {
+    this._stageOffs.push(this.bindTo(stage, 'contextmenu', e => {
       if (!this.active.value) return
       const handleIdx = this._handles.findIndex(h => h.konvaRoot() === e.target)
       const onLine = e.target === this.line.konvaRoot()
       if (handleIdx < 0 && !onLine) return
-      const me = e.evt as MouseEvent
+      const me = e.evt
       me.preventDefault()
       e.cancelBubble = true
       if (handleIdx >= 0 && this.effectiveSelectable(handleIdx) && !this.selection.value.includes(handleIdx)) {
@@ -708,12 +705,12 @@ export class EditableLine extends KonvexGroup {
         pointerWorld: this.localPointer(),
         selection: this.selection.value,
       })
-    })
+    }))
     // Rubber-band: left-drag on empty canvas. Started here; grown on mousemove;
     // committed on a window mouseup (so a release outside the stage still lands).
-    stage.on('mousedown' + this._ns, e => {
+    this._stageOffs.push(this.bindTo(stage, 'mousedown', e => {
       if (!this._rubberEnabled || !this.active.value) return
-      const me = e.evt as MouseEvent
+      const me = e.evt
       if (me.button !== 0 || me.altKey) return
       if (e.target !== stage) return // empty canvas only, never a shape/handle
       const p = this.localPointer()
@@ -721,8 +718,8 @@ export class EditableLine extends KonvexGroup {
       this._rubberStart = p
       this._rubberActive = false
       window.addEventListener('mouseup', this._onWindowUp, true)
-    })
-    stage.on('mousemove' + this._ns, () => {
+    }))
+    this._stageOffs.push(this.bindTo(stage, 'mousemove', () => {
       if (!this._rubberStart) return
       const p = this.localPointer()
       if (!p) return
@@ -735,7 +732,7 @@ export class EditableLine extends KonvexGroup {
         this.hideAssist()
       }
       this.updateRubberBand(this._rubberStart, p)
-    })
+    }))
   }
 
   /** Grow the box to span (a, b) and preview the enclosed selectable points. */

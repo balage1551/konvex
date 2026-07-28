@@ -138,9 +138,17 @@ Typed, auto-cleaned Konva event handlers live on every node:
 rect.onClick(e => console.log('clicked', e.evt))   // e.evt is a MouseEvent
 rect.onDragMove(() => console.log(rect.position.value))
 const off = rect.on('mouseover', () => {})          // generic form; returns an off()
+rect.on(['click', 'tap'], select)                   // same handler, mouse and touch
+rect.once('dragend', commit)                        // self-removing
+rect.bindTo(stage, 'mousemove', track)              // another node, this node's lifetime
 ```
 
-Handlers are removed automatically when the node is `destroy()`ed.
+Handlers are removed automatically when the node is `destroy()`ed. `event.target`
+is a raw Konva node — `konvexOf(event.target)` gives you the konvex object back.
+
+See [Events](./konvex.md#events) for the full list of event names and the three
+things konvex models reactively instead (attribute changes, the child list, and
+pointer cancellation).
 
 ## Cleanup
 

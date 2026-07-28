@@ -242,6 +242,23 @@ export type AnyShape = KonvexShape<Konva.Shape>
  * strictly-typed {@link KonvexNode.on} and the per-event convenience handlers
  * (`onClick`, `onMouseMove`, …) — so the handler's `event.evt` is correctly
  * typed per event instead of `any`.
+ *
+ * This is every event Konva 10 dispatches *on a node*, with two deliberate
+ * omissions:
+ *
+ * - **No `mousecancel` / `touchcancel` / `pointercancel`.** They appear in
+ *   Konva's own `EVENTS_MAP` but nothing ever fires them: a cancelled pointer
+ *   goes through `Stage._pointercancel`, which re-dispatches it as a plain
+ *   `pointerup`. Listening for a cancel name would silently never fire; listen
+ *   for `pointerup` instead. (A cancelled *drag* still ends normally — Konva's
+ *   drag layer watches `touchcancel` on the window and fires `dragend`.)
+ * - **No `add`.** Konva's one tree event carries `{ child }` rather than a DOM
+ *   event, so it does not fit this map; konvex models the tree reactively
+ *   through `childrenVersion` instead.
+ *
+ * Attribute changes are likewise not events here: `<attr>Change` drives ref
+ * invalidation internally, and the public way to observe a value is to `watch`
+ * its ref.
  */
 export interface KonvexEventMap {
   click: MouseEvent
@@ -260,9 +277,26 @@ export interface KonvexEventMap {
   touchstart: TouchEvent
   touchmove: TouchEvent
   touchend: TouchEvent
+  touchenter: TouchEvent
+  touchleave: TouchEvent
+  touchover: TouchEvent
+  touchout: TouchEvent
   pointerdown: PointerEvent
   pointerup: PointerEvent
   pointermove: PointerEvent
+  pointerenter: PointerEvent
+  pointerleave: PointerEvent
+  pointerover: PointerEvent
+  pointerout: PointerEvent
+  // Konva's pointer-family names for a click/double-click. `click`/`dblclick`
+  // (mouse) and `tap`/`dbltap` (touch) are the same gesture in the other two
+  // families — Konva dispatches one family per input device, not all three.
+  pointerclick: PointerEvent
+  pointerdblclick: PointerEvent
+  // Pointer capture, fired only where the browser has `PointerEvent`. Konva
+  // synthesises the event object, so `evt` carries no useful coordinates.
+  gotpointercapture: PointerEvent
+  lostpointercapture: PointerEvent
   // Konva drag events carry the originating mouse/touch event.
   dragstart: MouseEvent | TouchEvent
   dragmove: MouseEvent | TouchEvent

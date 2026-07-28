@@ -1,6 +1,8 @@
 import { effectScope, shallowRef, type EffectScope, type ShallowRef } from 'vue'
 import type Konva from 'konva'
 import type { KonvexNode } from './KonvexNode'
+import { bindKonvaEvent, type KonvaEventOptions } from './WrapperTools'
+import type { KonvexEventHandler, KonvexEventName } from './KonvexTypes'
 
 export interface KonvexBaseConfig {
   /**
@@ -53,6 +55,29 @@ export abstract class KonvexBase {
 
   /** The single Konva node a parent attaches — a leaf node or a Group. */
   abstract konvaRoot(): Konva.Node
+
+  /**
+   * Listen on **another** node, with this object's lifetime.
+   *
+   * The handler is removed when *this* object is destroyed, not when `target`
+   * is — which is the whole point: a widget that must watch the stage (for a
+   * pointer move outside itself, say) otherwise has to remember which stage it
+   * attached to and detach by hand, and getting that wrong leaks a listener
+   * onto a node that outlives the widget.
+   *
+   * `target` may be a konvex object or a raw Konva node, so this also covers
+   * nodes konvex does not wrap. Several event names bind as one unit; the
+   * returned `off` removes them all, as does `once` on first delivery.
+   */
+  bindTo<K extends KonvexEventName>(
+    target: Konva.Node | KonvexBase,
+    events: K | readonly K[],
+    handler: KonvexEventHandler<K>,
+    options?: KonvaEventOptions,
+  ): () => void {
+    const node = target instanceof KonvexBase ? target.konvaRoot() : target
+    return bindKonvaEvent(node, this.scope, events, handler, options)
+  }
 
   /**
    * Drop `child` from this object's bookkeeping, touching nothing on the child

@@ -3,7 +3,7 @@
 A reactive Vue 3 wrapper around Konva. New here? Read
 **[Getting started](./getting-started.md)** first; this page is the reference.
 
-- [Concepts](#concepts)
+- [Concepts](#concepts) · [Events](#events)
 - [Class hierarchy](#class-hierarchy)
 - [Common members](#common-members)
 - [`<KonvexStageContainer>` component](#konvexstagecontainer-component)
@@ -113,12 +113,57 @@ While this is `false`, the node's own `scaleX`/`scaleY` are konvex's to set: a
 scale written from elsewhere — including by a `Konva.Transformer` — is reverted
 on the next flush. Set `scalable` back to `true` to take the scale over.
 
+### Events
+
+Interaction events pass straight through from Konva, typed by
+[`KonvexEventMap`](#value-types) so `event.evt` is the right DOM event:
+
+```ts
+const off = shape.on('click', e => console.log(e.evt.altKey))   // typed MouseEvent
+shape.on(['click', 'tap'], e => select(e))                      // one unit, one off
+shape.once('dragend', commit)                                   // self-removing
+node.bindTo(stage, 'mousemove', track)                          // another node, our lifetime
+```
+
+- **Removal is automatic.** Every binding lives in the object's effect scope, so
+  `destroy()` drops it; the returned `off` is for removing one early. Each
+  registration gets its own Konva namespace, so binding the same event twice and
+  removing one leaves the other alone.
+- **Arrays bind as a unit.** One namespace, one `off`, and `once` removes all of
+  them on the first delivery of any.
+- **`bindTo(target, …)`** listens on *another* node — a stage, a sibling — with
+  *this* object's lifetime. That's the one to reach for in a widget that must
+  watch the stage: no need to remember which stage you attached to, and nothing
+  survives your `destroy()`. `target` may be a konvex object or a raw Konva node.
+- **Convenience handlers** mirror the map 1:1 (`onClick`, `onPointerClick`,
+  `onTransformEnd`, …) for when you'd rather not spell the name as a string.
+
+`event.target` is a **Konva** node, as Konva made it. Use `konvexOf(node)` to get
+the konvex object back — `undefined` for a node konvex never wrapped, or one
+whose wrapper is destroyed:
+
+```ts
+stage.onClick(e => {
+  const hit = konvexOf(e.target)
+  if (hit === stage) return   // the empty canvas
+  select(hit)
+})
+```
+
+Three things deliberately are *not* events:
+
+| Instead of | konvex uses |
+| --- | --- |
+| `<attr>Change` | the attribute's ref — `watch(shape.x, …)`. The change event drives ref invalidation internally. |
+| Konva's `add` | `childrenVersion`, a reactive counter on every container |
+| `mousecancel` / `touchcancel` / `pointercancel` | `pointerup`. Konva lists those names but never fires them: a cancelled pointer is re-dispatched as `pointerup`. A cancelled *drag* still ends with `dragend`. |
+
 ---
 
 ## Class hierarchy
 
 ```
-KonvexBase                     (scope + destroy; node-agnostic)
+KonvexBase                     (scope + destroy + bindTo; node-agnostic)
 └─ KonvexNode<T>               (transform/visibility refs, events; unitScale)
    ├─ KonvexContainer<T,Ch>    (children: add/remove, childrenVersion)
    │  ├─ KonvexStage           (root; bound to a DOM div; holds Layers)
@@ -161,8 +206,10 @@ reads the nearest ancestor's unless pinned by writing to it; see
 
 **Methods:**
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
-- `on(name, handler): () => void` — typed Konva event; returns an `off`.
-- Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End`, `onPointerDown/Up/Move`, `onDragStart/Move/End`, `onTransformStart/Transform/TransformEnd`. Each `event.evt` is typed (see [`KonvexEventMap`](#value-types)).
+- `on(name | names, handler, { once? }): () => void` — typed Konva event(s); returns an `off`. See [Events](#events).
+- `once(name | names, handler): () => void` — removed after the first delivery.
+- `bindTo(target, name | names, handler, { once? }): () => void` — the same, on another node, with this object's lifetime (inherited from `KonvexBase`).
+- Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End/Enter/Leave/Over/Out`, `onPointerDown/Up/Move/Enter/Leave/Over/Out`, `onPointerClick`, `onPointerDblClick`, `onGotPointerCapture`, `onLostPointerCapture`, `onDragStart/Move/End`, `onTransformStart/Transform/TransformEnd` — one per entry in [`KonvexEventMap`](#value-types), each with `event.evt` typed.
   The `transform*` trio comes from a `Konva.Transformer` the node is attached to;
   unlike the drag events these do **not** bubble, so bind them on the transformed
   node itself.
@@ -450,7 +497,8 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
 | `NumberParameter` | see [alteration rules](#alteration-rules) |
 | `VectorParameter` | see [alteration rules](#alteration-rules) |
 | `DragBoundFunc` | `(pos: Vector2d) => Vector2d` |
-| `KonvexEventMap` | maps each event name (`click`, `wheel`, `dragmove`, `transform`, …) to its DOM event type |
+| `KonvexEventMap` | every event Konva dispatches on a node (37: mouse, touch, pointer, wheel, drag, transform), mapped to its DOM event type — see [Events](#events) |
+| `KonvaEventOptions` | `{ once?: boolean }` — the third argument of `on`/`bindTo` |
 
 ### Fill variants
 

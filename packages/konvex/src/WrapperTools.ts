@@ -380,22 +380,44 @@ export function delegatableSetter<T>(
   }
 }
 
+/** Extra behaviour for {@link bindKonvaEvent}. */
+export interface KonvaEventOptions {
+  /** Remove the listener after its first delivery (of any of the names given). */
+  once?: boolean
+}
+
 /**
- * Register a Konva event listener that is automatically removed when `scope`
- * is disposed (i.e. when the wrapper is destroyed). Returns an `off` function
- * for manual removal. Each registration gets a unique namespace so removing
- * one never disturbs another.
+ * Register one or more Konva event listeners that are automatically removed
+ * when `scope` is disposed (i.e. when the owning wrapper is destroyed). Returns
+ * an `off` function for manual removal. Each registration gets a unique
+ * namespace so removing one never disturbs another — including a second
+ * registration of the same event on the same node.
+ *
+ * Several names bind as one unit: one namespace, one `off`, and with
+ * `once` the first delivery of *any* of them removes them all.
  */
 export function bindKonvaEvent(
   node: Konva.Node,
   scope: EffectScope,
-  eventName: string,
+  eventNames: string | readonly string[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (event: Konva.KonvaEventObject<any>) => void,
+  options: KonvaEventOptions = {},
 ): () => void {
-  const namespaced = `${eventName}.kx2evt${++eventSeq}`
-  node.on(namespaced, handler)
-  const off = () => node.off(namespaced)
+  const namespace = `.kx2evt${++eventSeq}`
+  const names = (typeof eventNames === 'string' ? [eventNames] : eventNames)
+    .map(name => `${name}${namespace}`)
+    .join(' ')
+  const off = () => node.off(names)
+  node.on(
+    names,
+    options.once
+      ? event => {
+          off()
+          handler(event)
+        }
+      : handler,
+  )
   scope.run(() => onScopeDispose(off))
   return off
 }

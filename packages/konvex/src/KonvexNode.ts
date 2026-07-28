@@ -10,12 +10,13 @@ import {
 import type Konva from 'konva'
 import { KonvexBase, type KonvexBaseConfig } from './KonvexBase'
 import {
-  bindKonvaEvent,
   nodeAttr,
   numberAttr,
   readonlyNodeAttr,
   vectorParam,
+  type KonvaEventOptions,
 } from './WrapperTools'
+import { registerKonvexNode, unregisterKonvexNode } from './KonvexRegistry'
 import type {
   AttrSource,
   DragBoundFunc,
@@ -168,6 +169,9 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   protected constructor(node: T, config: KonvexNodeConfig = {}) {
     super(config)
     this._node = markRaw(node)
+    // Publish the reverse link before anything can dispatch an event, so a
+    // handler can always resolve `event.target` back to its wrapper.
+    registerKonvexNode(node, this as unknown as KonvexNode<Konva.Node>)
 
     // Every attribute below is two-way: `nodeAttr` re-triggers the ref from
     // Konva's `<attr>Change`, so a drag, a `Konva.Transformer`, a tween or a
@@ -306,19 +310,48 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     return this._node
   }
 
+  /**
+   * Also drops the node → wrapper link, so {@link konvexOf} never hands out a
+   * destroyed wrapper (and a Konva node a host kept a reference to stops
+   * retaining one).
+   */
+  override destroy(): void {
+    unregisterKonvexNode(this._node)
+    super.destroy()
+  }
+
   /** Alias of {@link konvaRoot} that reads better at call sites. */
   detach(): T {
     return this._node
   }
 
   /**
-   * Register a typed Konva event handler. The event name is restricted to the
+   * Register a typed Konva event handler. Event names are restricted to the
    * known {@link KonvexEventName}s and the handler's `event.evt` is typed for
-   * that event. Returns an `off` function; the handler is also removed
-   * automatically when this object is destroyed.
+   * them. Returns an `off` function; the handler is also removed automatically
+   * when this object is destroyed.
+   *
+   * Pass an array to bind one handler to several events as a unit — the pairs
+   * that mean the same gesture on different devices, typically:
+   *
+   * ```ts
+   * shape.on(['click', 'tap'], e => select(konvexOf(e.target)))
+   * ```
    */
-  on<K extends KonvexEventName>(eventName: K, handler: KonvexEventHandler<K>): () => void {
-    return bindKonvaEvent(this._node, this.scope, eventName, handler)
+  on<K extends KonvexEventName>(
+    events: K | readonly K[],
+    handler: KonvexEventHandler<K>,
+    options?: KonvaEventOptions,
+  ): () => void {
+    return this.bindTo(this._node, events, handler, options)
+  }
+
+  /** {@link on}, removed after the first delivery of any of `events`. */
+  once<K extends KonvexEventName>(
+    events: K | readonly K[],
+    handler: KonvexEventHandler<K>,
+  ): () => void {
+    return this.on(events, handler, { once: true })
   }
 
   // --- typed per-event convenience handlers --------------------------------
@@ -357,6 +390,12 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   onWheel(handler: KonvexEventHandler<'wheel'>): () => void {
     return this.on('wheel', handler)
   }
+  onGotPointerCapture(handler: KonvexEventHandler<'gotpointercapture'>): () => void {
+    return this.on('gotpointercapture', handler)
+  }
+  onLostPointerCapture(handler: KonvexEventHandler<'lostpointercapture'>): () => void {
+    return this.on('lostpointercapture', handler)
+  }
   onTap(handler: KonvexEventHandler<'tap'>): () => void {
     return this.on('tap', handler)
   }
@@ -372,6 +411,18 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   onTouchEnd(handler: KonvexEventHandler<'touchend'>): () => void {
     return this.on('touchend', handler)
   }
+  onTouchEnter(handler: KonvexEventHandler<'touchenter'>): () => void {
+    return this.on('touchenter', handler)
+  }
+  onTouchLeave(handler: KonvexEventHandler<'touchleave'>): () => void {
+    return this.on('touchleave', handler)
+  }
+  onTouchOver(handler: KonvexEventHandler<'touchover'>): () => void {
+    return this.on('touchover', handler)
+  }
+  onTouchOut(handler: KonvexEventHandler<'touchout'>): () => void {
+    return this.on('touchout', handler)
+  }
   onPointerDown(handler: KonvexEventHandler<'pointerdown'>): () => void {
     return this.on('pointerdown', handler)
   }
@@ -380,6 +431,24 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   }
   onPointerMove(handler: KonvexEventHandler<'pointermove'>): () => void {
     return this.on('pointermove', handler)
+  }
+  onPointerEnter(handler: KonvexEventHandler<'pointerenter'>): () => void {
+    return this.on('pointerenter', handler)
+  }
+  onPointerLeave(handler: KonvexEventHandler<'pointerleave'>): () => void {
+    return this.on('pointerleave', handler)
+  }
+  onPointerOver(handler: KonvexEventHandler<'pointerover'>): () => void {
+    return this.on('pointerover', handler)
+  }
+  onPointerOut(handler: KonvexEventHandler<'pointerout'>): () => void {
+    return this.on('pointerout', handler)
+  }
+  onPointerClick(handler: KonvexEventHandler<'pointerclick'>): () => void {
+    return this.on('pointerclick', handler)
+  }
+  onPointerDblClick(handler: KonvexEventHandler<'pointerdblclick'>): () => void {
+    return this.on('pointerdblclick', handler)
   }
   onDragStart(handler: KonvexEventHandler<'dragstart'>): () => void {
     return this.on('dragstart', handler)

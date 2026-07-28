@@ -736,7 +736,7 @@ import ComponentHeader from './components/ComponentHeader.vue'
 import PmiSplitPane from './components/PmiSplitPane.vue'
 import PmiSplitPaneContainer from './components/PmiSplitPaneContainer.vue'
 import Konva from 'konva'
-import { KonvexStageContainer } from '@balage1551/konvex'
+import { konvexOf, KonvexStageContainer } from '@balage1551/konvex'
 import type { KonvexStageExpose, WorldMode, ZoomMode } from '@balage1551/konvex'
 import type { KonvexStage } from '@balage1551/konvex'
 import type { KonvexLayer } from '@balage1551/konvex'
@@ -1429,7 +1429,7 @@ function onStageReady(stage: KonvexStage): void {
     }
   }
   stage.onClick(e => {
-    if (e.target !== stage.detach()) return // empty canvas only
+    if (konvexOf(e.target) !== stage) return // empty canvas only
     if (e.evt.altKey) return // Alt is the show-control-lines modifier — never deselects
     if (!deferDeselect.value) {
       select(undefined) // immediate — reproduces the raw click-before-dblclick race
@@ -1447,7 +1447,7 @@ function onStageReady(stage: KonvexStage): void {
     }, deselectDelayMs.value)
   })
   stage.onDblClick(e => {
-    if (e.target === stage.detach()) cancelPendingDeselect()
+    if (konvexOf(e.target) === stage) cancelPendingDeselect()
   })
   // Live world coordinate under the cursor (uses the stage's pointer utility).
   stage.onMouseMove(() => {
