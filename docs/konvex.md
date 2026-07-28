@@ -273,6 +273,7 @@ reads the nearest ancestor's unless pinned by writing to it; see
 **Methods:**
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
 - `pointerPosition(): Vector2d | null` / `relativePointerPosition(): Vector2d | null` — the pointer in stage space / in this node's own space. See [Events](#events).
+- **z-order:** `zIndex` (a reactive `ComputedRef<number>` — 0 is at the back) plus `setZIndex(i): number`, `moveToTop()`, `moveToBottom()`, `moveUp()`, `moveDown()`. The four movers return whether anything moved; `setZIndex` clamps quietly and returns where it landed. Each keeps the parent's `children` in step with Konva — reordering through Konva directly (`node.detach().moveToTop()`) does not, though the next konvex reorder re-sorts from Konva and repairs it.
 - `on(name | names, handler, { once? }): () => void` — typed Konva event(s); returns an `off`. See [Events](#events).
 - `once(name | names, handler): () => void` — removed after the first delivery.
 - `bindTo(target, name | names, handler, { once? }): () => void` — the same, on another node, with this object's lifetime (inherited from `KonvexBase`).
@@ -311,7 +312,9 @@ Config: `KonvexShapeConfig extends KonvexNodeConfig` — `fill`, `stroke`,
 ### `KonvexContainer<T, Ch>` — Stage / Layer / Group
 
 `children` is in **z-order**: `add(child, index)` inserts at that index in both
-konvex's list and Konva's, so `children[i]` is the i-th node on screen. `Ch` is
+konvex's list and Konva's, so `children[i]` is the i-th node on screen, and the
+z-order methods on a child (`moveToTop()`, `setZIndex(i)`, …) keep it that way.
+`childrenVersion` changes on a reorder as well as on add/remove. `Ch` is
 the child type a container accepts — layers for a stage, shapes and groups
 (`KonvexContent`) for a layer or a group, which is Konva's own rule
 (`_validateAdd`) expressed in the type system.

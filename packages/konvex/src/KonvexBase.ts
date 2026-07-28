@@ -126,6 +126,30 @@ export abstract class KonvexBase {
   _releaseChild(_child: KonvexBase): void {}
 
   /**
+   * Reorder this object's child list to match Konva's, and report the change.
+   * A no-op for a leaf; {@link KonvexContainer} overrides it.
+   *
+   * Called by a *child* after it changes its own z-order, since the order lives
+   * in the parent. Declared here for the same reason as {@link _releaseChild}:
+   * importing the container would close an initialisation cycle.
+   *
+   * @internal
+   */
+  _resyncChildOrder(): void {}
+
+  /**
+   * Reactive counter that changes whenever this object's children change — added,
+   * removed, or reordered. `0` for anything that cannot have children;
+   * {@link KonvexContainer} overrides it with its real version, which is also
+   * what it exposes publicly as `childrenVersion`.
+   *
+   * @internal
+   */
+  get _childOrderVersion(): number {
+    return 0
+  }
+
+  /**
    * Tear down: unregister from the parent, stop every effect in this object's
    * scope, then destroy the underlying Konva node (which recursively destroys
    * descendants and removes their event listeners).

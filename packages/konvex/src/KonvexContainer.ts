@@ -19,7 +19,8 @@ export abstract class KonvexContainer<
   protected readonly _children: Ch[] = []
 
   /**
-   * Reactive version counter, bumped on every add/remove — here *and* in any
+   * Reactive version counter, bumped on every add, remove and reorder — here
+   * *and* in any
    * descendant container, since the bump bubbles up the ancestor chain (see
    * {@link bumpVersion}). Konva's own `add` event fires only on the immediate
    * parent, so this is how reactive consumers (e.g. a stage that auto-sizes
@@ -84,6 +85,24 @@ export abstract class KonvexContainer<
     this.bumpVersion()
     this.signals.emit('child-added', { child, index: child.konvaRoot().zIndex() })
     return child
+  }
+
+  /**
+   * Sort `_children` into Konva's order — the single definition of what
+   * `children` means. Sorting by Konva's own index rather than replaying the
+   * move also *repairs* a list that a raw `node.zIndex(…)` on the Konva node had
+   * knocked out of step.
+   *
+   * @internal
+   */
+  override _resyncChildOrder(): void {
+    this._children.sort((a, b) => a.konvaRoot().zIndex() - b.konvaRoot().zIndex())
+    this.bumpVersion()
+  }
+
+  /** @internal — see {@link KonvexBase._childOrderVersion}. */
+  override get _childOrderVersion(): number {
+    return this._version.value
   }
 
   /** Remove a child from this container (without destroying it). */

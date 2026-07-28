@@ -682,6 +682,16 @@
                     drag: {{ dragLockOn ? 'lock-Y' : 'free' }}
                   </v-btn>
                 </div>
+                <!-- z-order: the readout is `selected.zIndex`, which is reactive,
+                     so it follows a sibling being moved as well as this one. -->
+                <div>
+                  <span class="info"><span class="label">z:</span> {{ selected.zIndex.value }} /
+                    {{ (world?.children.length ?? 1) - 1 }}</span>
+                  <v-btn size="small" class="m-btn" @click="selected.moveToBottom()">⤓ back</v-btn>
+                  <v-btn size="small" class="m-btn" @click="selected.moveDown()">↓</v-btn>
+                  <v-btn size="small" class="m-btn" @click="selected.moveUp()">↑</v-btn>
+                  <v-btn size="small" class="m-btn" @click="selected.moveToTop()">⤒ front</v-btn>
+                </div>
                 <div v-if="asShape">
                   <v-btn
                     size="small"

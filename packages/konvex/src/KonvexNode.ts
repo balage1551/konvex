@@ -154,6 +154,16 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   readonly unitScale: WritableComputedRef<number, number | undefined>
 
   /**
+   * This node's index among its parent's children — its **z-order**: 0 is drawn
+   * first (at the back), the last index on top. `0` when it has no parent.
+   *
+   * Reactive: it follows the parent's `childrenVersion`, so it re-reads when a
+   * sibling is added, removed or reordered, not just when this node moves.
+   * Change it with {@link setZIndex} or the `move*` methods.
+   */
+  readonly zIndex: ComputedRef<number>
+
+  /**
    * The node's bounding box in its parent's coordinate space — a value that
    * flows Konva → Vue but cannot be set.
    *
@@ -229,6 +239,13 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
       set: v => {
         ownUnitScale.value = v
       },
+    })
+
+    this.zIndex = computed(() => {
+      // The parent owns the order, so its version is the dependency; without a
+      // parent Konva reports 0 and there is nothing to track.
+      void this._parent.value?._childOrderVersion
+      return node.zIndex()
     })
 
     // Depends on the refs rather than a hand-kept list of Konva event names: the
@@ -367,6 +384,62 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
    */
   relativePointerPosition(): Vector2d | null {
     return this._node.getRelativePointerPosition()
+  }
+
+  // --- z-order --------------------------------------------------------------
+  // Konva's own z-order methods reorder the parent's Konva children, which would
+  // leave konvex's `children` (and so `childrenVersion`) behind. These do the
+  // move and then have the parent re-sort itself, so the two never disagree.
+  // Each returns whether anything actually moved, as Konva's do.
+
+  /**
+   * Move to `index` among its siblings, clamped to the valid range — Konva warns
+   * and clamps for an out-of-range value; this clamps quietly. Returns the index
+   * it ended up at.
+   */
+  setZIndex(index: number): number {
+    const parent = this._parent.value
+    if (!parent) return this._node.zIndex()
+    const last = this._node.getParent()!.getChildren().length - 1
+    const target = Math.max(0, Math.min(Math.round(index), last))
+    if (target !== this._node.zIndex()) {
+      this._node.zIndex(target)
+      parent._resyncChildOrder()
+    }
+    return this._node.zIndex()
+  }
+
+  /** Bring to the front of its siblings. `false` if it was already there. */
+  moveToTop(): boolean {
+    return this.reorder(() => this._node.moveToTop())
+  }
+
+  /** Send to the back of its siblings. `false` if it was already there. */
+  moveToBottom(): boolean {
+    return this.reorder(() => this._node.moveToBottom())
+  }
+
+  /** One step towards the front. `false` if it was already at the front. */
+  moveUp(): boolean {
+    return this.reorder(() => this._node.moveUp())
+  }
+
+  /** One step towards the back. `false` if it was already at the back. */
+  moveDown(): boolean {
+    return this.reorder(() => this._node.moveDown())
+  }
+
+  /**
+   * Run a Konva z-order move and resync the parent if it changed anything. The
+   * parent check is ours rather than Konva's, which warns on the console for a
+   * parentless node — moving one is a no-op, not a mistake.
+   */
+  private reorder(move: () => boolean): boolean {
+    const parent = this._parent.value
+    if (!parent) return false
+    const moved = move()
+    if (moved) parent._resyncChildOrder()
+    return moved
   }
 
   /**
