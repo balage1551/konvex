@@ -18,8 +18,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "npm run build && changeset publish"
+    "version-packages": "changeset version && node scripts/sync-workspace-peers.mjs",
+    "release": "node scripts/sync-workspace-peers.mjs --check && npm run build && changeset publish",
+    "sync-peers": "node scripts/sync-workspace-peers.mjs"
   },
   "engines": {
     "node": ">=18"

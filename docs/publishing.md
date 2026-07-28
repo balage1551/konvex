@@ -35,8 +35,9 @@ Fully automated — no hand-editing of versions, no manual `npm publish`:
 
 1. Merge your PR (with its changeset) to `main`.
 2. The **Release** workflow opens/updates a **"Version Packages"** PR that bumps
-   **both** `package.json` versions in lockstep, updates the internal
-   `@balage1551/konvex` peer range, and writes the changelogs.
+   **both** `package.json` versions in lockstep, pins the internal
+   `@balage1551/konvex` peer range to the new version (see below), and writes the
+   changelogs.
 3. Merge the Version PR when you're ready to ship. That triggers the workflow to
    build and publish both packages with signed
    [provenance](https://docs.npmjs.com/generating-provenance-statements).
@@ -49,6 +50,37 @@ them all in one Version PR.
 (`workflow_dispatch`). With no pending changesets it just re-runs publishing for
 the versions currently on `main` — useful only if an automated publish
 half-failed.
+
+### The internal peer range is pinned, not left open
+
+`konvex-editable-line` peer-depends on `@balage1551/konvex`, and that range is
+rewritten to `^<the version being released>` by `scripts/sync-workspace-peers.mjs`,
+which `npm run version-packages` runs straight after `changeset version`. The
+`release` script re-checks it (`--check`) before publishing, so a stale range fails
+the run instead of shipping.
+
+It has to be done by hand because nothing else does it:
+
+- **changesets won't.** `onlyUpdatePeerDependentsWhenOutOfRange: true` means a peer
+  range is rewritten only when the new version *leaves* it, and `1.3.0` never
+  leaves `^1.0.0`. Turning the flag off is worse: changesets then treats a minor
+  bump of a peer dependency as breaking for the dependent and forces it to
+  **major**, which with our `fixed` group would take the pair to `2.0.0` on every
+  core minor.
+- **`workspace:^` won't.** npm is supposed to substitute the real range at publish
+  time, but it does not do so for `peerDependencies` — npm 9 and npm 11 both pack
+  the literal string `workspace:^`, which would ship a broken manifest.
+
+Why pin at all: editable-line is only ever built and tested against the core it
+ships with, and it freely uses core APIs as they arrive. The range sat at `^1.0.0`
+while editable-line moved on to APIs that 1.0.0 never had, so `core@1.0.x` +
+`editable-line@1.2.x` installed happily and then failed at runtime on a missing
+export. Since the two are versioned in lockstep, the honest minimum is simply the
+version being cut.
+
+The trade-off, chosen deliberately: upgrading editable-line now requires upgrading
+core in the same step. That is what lockstep already implied — this only makes npm
+aware of it.
 
 ## One-time setup: configure the trusted publisher (per package)
 
