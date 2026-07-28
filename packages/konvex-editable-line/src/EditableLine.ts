@@ -247,6 +247,10 @@ export class EditableLine extends KonvexGroup {
       watch(this.active, a => {
         if (!a) {
           this.hideAssist()
+          // A band in progress belongs to the gesture that started it: leaving it
+          // running kept the box on screen and let a later mouseup apply a
+          // selection to a line that was no longer being edited.
+          this.cancelRubberBand()
           if (!this.persistentSelection.value) this.clearSelection()
         }
       })
@@ -422,7 +426,16 @@ export class EditableLine extends KonvexGroup {
     const out = straightenPoints(sel.map(i => this.pointAt(i)))
     for (let k = 1; k < sel.length - 1; k++) {
       const idx = sel[k]
-      if (this.effectiveMovable(idx) !== false) this.movePoint(idx, out[k])
+      const mv = this.effectiveMovable(idx)
+      if (mv === false) continue
+      // An axis lock applies here exactly as it does to a drag: a point that may
+      // only travel along one axis keeps its other coordinate, rather than being
+      // projected in both and sliding off its rail.
+      const now = this.pointAt(idx)
+      this.movePoint(idx, {
+        x: mv === 'y' ? now.x : out[k].x,
+        y: mv === 'x' ? now.y : out[k].y,
+      })
     }
   }
 
@@ -436,10 +449,42 @@ export class EditableLine extends KonvexGroup {
     const f = this.line.points.value
     const pts: Vector2d[] = []
     for (let i = 0; i * 2 + 1 < f.length; i++) pts.push({ x: f[i * 2], y: f[i * 2 + 1] })
-    const out = simplifyPoints(pts, threshold)
+
+    // A pinned (`movable: false`) point is a boundary, not a candidate: the run
+    // between two of them is simplified on its own, and since `simplifyPoints`
+    // keeps a run's endpoints exactly, every pin survives where it is. Without
+    // this, simplifying could delete or move the very points the caller had
+    // declared immovable.
+    const bounds = [0]
+    for (let i = 1; i < pts.length - 1; i++) {
+      if (this.effectiveMovable(i) === false) bounds.push(i)
+    }
+    bounds.push(pts.length - 1)
+
+    const out: Vector2d[] = []
+    // Where each pinned boundary ends up, so its overrides can follow it.
+    const kept: { from: number; to: number }[] = []
+    for (let b = 0; b + 1 < bounds.length; b++) {
+      const run = simplifyPoints(pts.slice(bounds[b], bounds[b + 1] + 1), threshold)
+      if (b === 0) {
+        kept.push({ from: bounds[0], to: 0 })
+        out.push(...run)
+      } else {
+        // This boundary is the previous run's last point, already in `out` — so
+        // that is where it landed, and its repeat at the head of `run` is dropped.
+        kept.push({ from: bounds[b], to: out.length - 1 })
+        out.push(...run.slice(1))
+      }
+    }
+    kept.push({ from: bounds[bounds.length - 1], to: out.length - 1 })
     if (out.length === pts.length) return // nothing collapsed
+
+    const options = this._options
     this.writePoints(out.flatMap(p => [p.x, p.y]))
+    // Indices moved, so per-point overrides cannot be carried across in general —
+    // except on the boundaries, which are exactly the points that were pinned.
     this._options = out.map(() => undefined)
+    for (const k of kept) this._options[k.to] = options[k.from]
     this.clearSelection()
     this.rebuildHandles()
     // A reshape of the whole polyline: which points survived is not expressible
@@ -811,14 +856,24 @@ export class EditableLine extends KonvexGroup {
    * the enclosed set — Ctrl unions it with the current selection, otherwise it
    * replaces it. A sub-threshold click leaves the selection untouched.
    */
-  private endRubberBand(extend: boolean): void {
+  /**
+   * Drop the band without applying it — for when the gesture stops mattering
+   * rather than finishing, e.g. the line being deactivated mid-drag. Also takes
+   * the window listener back off: left attached, it fired on the next mouseup
+   * anywhere and rewrote the selection of a line the user had already left.
+   */
+  private cancelRubberBand(): void {
     window.removeEventListener('mouseup', this._onWindowUp, true)
-    const active = this._rubberActive
-    const enclosed = this._rubberPreview.value
     this._rubberStart = null
     this._rubberActive = false
     this._rubberBand.visible.value = false
     this._rubberPreview.value = []
+  }
+
+  private endRubberBand(extend: boolean): void {
+    const active = this._rubberActive
+    const enclosed = this._rubberPreview.value
+    this.cancelRubberBand()
     if (!active) return
     if (extend) {
       const set = new Set(this.selection.value)

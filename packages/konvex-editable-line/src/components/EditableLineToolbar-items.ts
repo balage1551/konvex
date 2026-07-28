@@ -11,6 +11,7 @@ import type {
   EditableLineToolbarItem,
   ToolbarItemSpec,
 } from './EditableLineToolbar-types'
+import type { PointMovement } from '../EditableLine-types'
 
 /** Marker returned by {@link resolveToolbarItems} for a divider. */
 export const TOOLBAR_SEPARATOR = 'separator' as const
@@ -21,7 +22,7 @@ export type ToolbarSeparator = typeof TOOLBAR_SEPARATOR
  * point the same x (a vertical arrangement); `edge` picks min / midpoint / max.
  */
 function alignSelected(line: EditableLine, axis: 'x' | 'y', edge: 'start' | 'center' | 'end'): void {
-  const pts = line.pointInfos.value.filter(p => p.selected && p.movable !== false)
+  const pts = line.pointInfos.value.filter(p => p.selected && movableAlong(p.movable, axis))
   if (pts.length < 2) return
   const values = pts.map(p => p[axis])
   const target =
@@ -35,10 +36,22 @@ function alignSelected(line: EditableLine, axis: 'x' | 'y', edge: 'start' | 'cen
   }
 }
 
-/** At least two movable points selected — the precondition for an align. */
-function canAlign(ctx: EditableLineToolbarContext): 'disabled' | 'enabled' {
-  const movable = ctx.points.filter(p => p.movable !== false).length
-  return movable >= 2 ? 'enabled' : 'disabled'
+/**
+ * May this point move along `axis`?
+ *
+ * `movable: false` pins it outright; `'x'` / `'y'` allow that axis *only*, so
+ * aligning on the other one would drag the point off its rail — the same rule a
+ * drag applies. Only checking for `false` moved axis-locked points sideways.
+ */
+function movableAlong(movable: PointMovement, axis: 'x' | 'y'): boolean {
+  if (movable === false) return false
+  return movable === 'free' || movable === axis
+}
+
+/** At least two points that can move along `axis` — the precondition for an align. */
+function canAlign(axis: 'x' | 'y') {
+  return (ctx: EditableLineToolbarContext): 'disabled' | 'enabled' =>
+    ctx.points.filter(p => movableAlong(p.movable, axis)).length >= 2 ? 'enabled' : 'disabled'
 }
 
 function alignItem(
@@ -52,7 +65,7 @@ function alignItem(
     id,
     label,
     render: { icon },
-    state: canAlign,
+    state: canAlign(axis),
     run: ctx => alignSelected(ctx.line, axis, edge),
   }
 }
