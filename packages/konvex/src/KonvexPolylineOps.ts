@@ -25,7 +25,13 @@ function angleAtDeg(vertex: Vector2d, p1: Vector2d, p2: Vector2d): number {
   const v2y = p2.y - vertex.y
   const m1 = Math.hypot(v1x, v1y)
   const m2 = Math.hypot(v2x, v2y)
-  if (m1 === 0 || m2 === 0) return 0
+  // A zero-length side means two of the three points coincide, and *which* two
+  // decides the answer. `p1` on the vertex is a duplicate point, which is as
+  // droppable as a flat one (0). `p2` on the vertex is an out-and-back spike: the
+  // triangle is degenerate, not flat, and collapsing it would delete a vertex the
+  // caller drew deliberately — so report the opposite of flat.
+  if (m1 === 0) return 0
+  if (m2 === 0) return 180
   const cos = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (m1 * m2)))
   return (Math.acos(cos) * 180) / Math.PI
 }
@@ -91,20 +97,47 @@ function removeNearCollinear(points: Vector2d[], maxAngle: number): Vector2d[] {
  * Merge runs of consecutive points into their centroid. A point joins the
  * current run only when it is within `maxDist` of *every* member already in it,
  * so an entire run fits inside a `maxDist` diameter before it collapses.
+ *
+ * The two **endpoints stay exactly where they are**: a cluster that reaches the
+ * start or the end collapses onto that endpoint instead of to its centroid.
+ * Averaging them in moved the ends of the line — a dense start would creep
+ * inwards, and a polyline small enough to be one cluster collapsed to a single
+ * point somewhere in its middle.
  */
 function mergeClusters(points: Vector2d[], maxDist: number): Vector2d[] {
   if (points.length === 0) return []
+  const last = points.length - 1
   const result: Vector2d[] = []
-  let cluster: Vector2d[] = [points[0]]
+  // Clusters are runs of consecutive indices, so `from`/`to` say it all.
+  let from = 0
+  const flush = (to: number): void => {
+    const hasStart = from === 0
+    const hasEnd = to === last
+    if (hasStart && hasEnd) {
+      // The whole polyline fits in one cluster: keep both ends rather than
+      // reducing the line to a point.
+      result.push({ x: points[0].x, y: points[0].y })
+      if (last > 0) result.push({ x: points[last].x, y: points[last].y })
+      return
+    }
+    const anchor = hasStart ? 0 : hasEnd ? last : -1
+    if (anchor >= 0) result.push({ x: points[anchor].x, y: points[anchor].y })
+    else result.push(centroid(points.slice(from, to + 1)))
+  }
   for (let i = 1; i < points.length; i++) {
     const p = points[i]
-    if (cluster.every(q => dist(p, q) < maxDist)) cluster.push(p)
-    else {
-      result.push(centroid(cluster))
-      cluster = [p]
+    let joins = true
+    for (let j = from; j < i; j++) {
+      if (dist(p, points[j]) >= maxDist) {
+        joins = false
+        break
+      }
     }
+    if (joins) continue
+    flush(i - 1)
+    from = i
   }
-  result.push(centroid(cluster))
+  flush(last)
   return result
 }
 
@@ -113,6 +146,9 @@ function mergeClusters(points: Vector2d[], maxDist: number): Vector2d[] {
  * SimplificationThreshold.angle}), then merge dense clusters to their centroid
  * (by {@link SimplificationThreshold.distance}). Returns a new array; input is
  * not mutated.
+ *
+ * Both endpoints survive at their exact coordinates, and a vertex that doubles
+ * back on itself is kept — only genuinely flat corners and duplicate points go.
  */
 export function simplifyPoints(
   points: Vector2d[],
