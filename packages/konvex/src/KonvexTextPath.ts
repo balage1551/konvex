@@ -136,4 +136,20 @@ export class KonvexTextPath extends KonvexShape<Konva.TextPath> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * Text on a path is boxed by the glyphs it actually lays down, so both the
+   * text metrics and the path it follows move the box. Source attributes, for the
+   * same reason as {@link KonvexText.trackGeometry}.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.text.value
+    void this.data.value
+    void this.fontSize.value
+    void this.fontFamily.value
+    void this.fontStyle.value
+    void this.fontVariant.value
+    void this.letterSpacing.value
+  }
 }

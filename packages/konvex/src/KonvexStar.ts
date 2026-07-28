@@ -42,4 +42,13 @@ export class KonvexStar extends KonvexShape<Konva.Star> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * Konva boxes a star by its outer radius; the inner radius and point count
+   * stay inside it.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.outerRadius.value
+  }
 }

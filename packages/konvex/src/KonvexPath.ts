@@ -37,4 +37,10 @@ export class KonvexPath extends KonvexShape<Konva.Path> {
     layer.add(this, index)
     return this
   }
+
+  /** The whole box comes from the path data. */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.data.value
+  }
 }

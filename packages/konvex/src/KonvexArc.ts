@@ -44,4 +44,16 @@ export class KonvexArc extends KonvexShape<Konva.Arc> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * An arc has a real self-rect: it is trimmed to the swept sector, so every
+   * one of these four moves an edge.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.innerRadius.value
+    void this.outerRadius.value
+    void this.angle.value
+    void this.clockwise.value
+  }
 }

@@ -43,4 +43,14 @@ export class KonvexArrow extends KonvexLine<Konva.Arrow> {
     }
     if (config.pointerAtEnding !== undefined) this.pointerAtEnding.value = config.pointerAtEnding
   }
+
+  /**
+   * On top of the line's geometry, Konva pads an arrow's self-rect by half the
+   * pointer width. (It does not account for `pointerLength`, which sits along the
+   * line inside the existing box.)
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.pointerWidth.value
+  }
 }

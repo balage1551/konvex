@@ -252,12 +252,19 @@ KonvexBase                     (scope + destroy + bindTo; node-agnostic)
 
 **Read-only computed:** `effectiveScaleX`, `effectiveScaleY`, `clientRect`
 (`{ x, y, width, height }` in parent space). `clientRect` re-reads whenever
-anything that moves the box changes: every attribute of the node's own transform,
-a container's whole subtree (children, and their children — including a child
-being hidden or shown, which Konva takes in or out of the union), and a line's
-points.
-Other shapes' geometry attributes (`radius`, `data`, `text`, …) do not yet
-invalidate it — override `trackGeometry()` to add them.
+anything that moves the box changes:
+
+- every attribute of the node's own transform, and its `visible`;
+- a container's whole subtree — children and their children, including one being
+  hidden or shown, which Konva takes in or out of the union;
+- the stroke, which `getClientRect` adds to the box;
+- and each shape's own geometry: `radius`, the radii and angles, `sides`, `points`,
+  `data`, the text and font cluster, an image's natural size, a tag's pointer, an
+  arrow's head.
+
+`cornerRadius` and a sprite's `frameIndex` are *not* dependencies, because Konva's
+box does not depend on them. A custom shape adds its own by overriding the
+protected `trackGeometry()` — read a ref there and the box follows it.
 
 **Inherited:** `unitScale` `WritableComputedRef<number, number | undefined>` —
 reads the nearest ancestor's unless pinned by writing to it; see

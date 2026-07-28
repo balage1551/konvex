@@ -35,4 +35,10 @@ export class KonvexWedge extends KonvexShape<Konva.Wedge> {
     layer.add(this, index)
     return this
   }
+
+  /** Konva boxes a wedge by its full circle, so the angle does not matter. */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.radius.value
+  }
 }

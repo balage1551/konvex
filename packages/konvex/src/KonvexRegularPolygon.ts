@@ -48,4 +48,14 @@ export class KonvexRegularPolygon extends KonvexShape<Konva.RegularPolygon> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * The self-rect is the hull of the generated vertices, so the count matters
+   * as much as the radius (a triangle is not as tall as its circumscribed circle).
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.radius.value
+    void this.sides.value
+  }
 }

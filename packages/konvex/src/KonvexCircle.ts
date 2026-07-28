@@ -39,4 +39,13 @@ export class KonvexCircle extends KonvexShape<Konva.Circle> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * A circle's box is its radius: Konva derives `width`/`height` from it, and
+   * those attributes never change.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.radius.value
+  }
 }

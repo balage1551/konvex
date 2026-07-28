@@ -48,4 +48,11 @@ export class KonvexEllipse extends KonvexShape<Konva.Ellipse> {
     layer.add(this, index)
     return this
   }
+
+  /** Konva derives `width`/`height` from the two radii. */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.radiusX.value
+    void this.radiusY.value
+  }
 }

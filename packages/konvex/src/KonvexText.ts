@@ -160,4 +160,23 @@ export class KonvexText extends KonvexShape<Konva.Text> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * With `width`/`height` left unset Konva measures the text instead, so the box
+   * follows the glyphs. Listed as the source attributes rather than via
+   * `textWidth`/`textHeight`: those are convenient, but `textHeight` calls a
+   * Konva method that warns as deprecated, and this runs on every box read.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.text.value
+    void this.fontSize.value
+    void this.fontFamily.value
+    void this.fontStyle.value
+    void this.fontVariant.value
+    void this.letterSpacing.value
+    void this.lineHeight.value
+    void this.padding.value
+    void this.wrap.value
+  }
 }

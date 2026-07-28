@@ -54,4 +54,15 @@ export class KonvexTag extends KonvexShape<Konva.Tag> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * A tag's self-rect is its size extended by the pointer, on the side the
+   * pointer sticks out of.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.pointerDirection.value
+    void this.pointerWidth.value
+    void this.pointerHeight.value
+  }
 }

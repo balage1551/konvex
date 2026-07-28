@@ -364,4 +364,15 @@ export abstract class KonvexShape<T extends Shape> extends KonvexNode<T> {
       this.strokeScaleEnabled.value = config.strokeScaleEnabled
     }
   }
+
+  /**
+   * `getClientRect` grows the box by half the stroke on each side when the shape
+   * has one (`Konva.Shape.hasStroke`), so the paint that decides *whether* it has
+   * one counts as geometry here.
+   */
+  protected override trackGeometry(): void {
+    void this.strokeColor.value
+    void this.strokeWidth.value
+    void this.strokeEnabled.value
+  }
 }

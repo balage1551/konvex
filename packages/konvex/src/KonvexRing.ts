@@ -45,4 +45,10 @@ export class KonvexRing extends KonvexShape<Konva.Ring> {
     layer.add(this, index)
     return this
   }
+
+  /** The ring's extent is the outer radius; the hole does not move the box. */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.outerRadius.value
+  }
 }

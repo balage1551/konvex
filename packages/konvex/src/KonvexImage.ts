@@ -68,4 +68,13 @@ export class KonvexImage extends KonvexShape<Konva.Image> {
     layer.add(this, index)
     return this
   }
+
+  /**
+   * With no explicit `width`/`height`, Konva falls back to the image's natural
+   * size — so swapping the image resizes the box. Cropping does not.
+   */
+  protected override trackGeometry(): void {
+    super.trackGeometry()
+    void this.image.value
+  }
 }

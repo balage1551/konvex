@@ -156,6 +156,7 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
    * used to be. `tension`/`closed` reshape the curve through the same points.
    */
   protected override trackGeometry(): void {
+    super.trackGeometry()
     void this.points.value
     void this.tension.value
     void this.closed.value
