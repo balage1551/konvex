@@ -125,8 +125,8 @@ Extends `KonvexGroupConfig`. Fields:
 | `select(index, { extend? })` | Select a point (or toggle-extend with `extend: true`). |
 | `clearSelection()` | Deselect all. |
 | `removeSelected()` | Remove every selected point. |
-| `straightenSelection()` | Project the intermediate **selected** points onto the line through the first/last selected; pinned points stay. No-op for < 3 selected. |
-| `simplify(threshold?)` | Simplify the whole polyline in place (clears selection & overrides — indices change). No-op for < 3 points. |
+| `straightenSelection()` | Project the intermediate **selected** points onto the line through the first/last selected. `movable: false` points stay; an `'x'`/`'y'` point moves only along its own axis. No-op for < 3 selected. |
+| `simplify(threshold?)` | Simplify the whole polyline in place. Endpoints and `movable: false` points keep their exact positions (each run between pins is simplified on its own) and pinned points keep their overrides; the selection and every other override are cleared, since indices change. No-op for < 3 points. |
 | `setPointOptions(index, options)` | Set/override per-point `movable`/`selectable`. |
 | `destroy()` | Tear down (also removes window/key listeners). |
 

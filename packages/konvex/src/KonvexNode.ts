@@ -295,6 +295,10 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     // own scale for nothing.
     const ancestorScaleX = computed(() => this._parent.value?.effectiveScaleX.value ?? 1)
     const ancestorScaleY = computed(() => this._parent.value?.effectiveScaleY.value ?? 1)
+    // The scale from before compensation started, so `scalable` can be switched
+    // back. Without it, turning it off and on again left the node wearing the
+    // reciprocal of some past ancestor scale — a one-way door dressed as a toggle.
+    let uncompensated: Vector2d | undefined
     this.scope.run(() =>
       watch(
         [
@@ -306,8 +310,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
         ],
         ([scalable, sx, sy]) => {
           if (!scalable) {
+            uncompensated ??= { x: this.scaleX.value, y: this.scaleY.value }
             this.scaleX.value = sx ? 1 / sx : 1
             this.scaleY.value = sy ? 1 / sy : 1
+          } else if (uncompensated) {
+            const restore = uncompensated
+            uncompensated = undefined
+            this.scaleX.value = restore.x
+            this.scaleY.value = restore.y
           }
         },
         { immediate: true },
@@ -356,7 +366,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
     super.destroy()
   }
 
-  /** Alias of {@link konvaRoot} that reads better at call sites. */
+  /**
+   * Alias of {@link konvaRoot} that reads better at call sites — "give me the raw
+   * node".
+   *
+   * It does **not** detach anything: the node stays exactly where it is, in its
+   * parent, and this hands you a reference to it. Use `parent.remove(node)` to
+   * actually take it out of the tree.
+   */
   detach(): T {
     return this._node
   }

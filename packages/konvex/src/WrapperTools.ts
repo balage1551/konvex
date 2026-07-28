@@ -279,7 +279,13 @@ function resolveNumber(
   const interpreted = interpretNumber(value, def)
   let result = interpreted.value
   if (interpreted.mode === 'by') {
-    result = changeMode === 'multiply' ? original * interpreted.value : original + interpreted.value
+    // `by` needs something to be relative *to*, and not every Konva attribute has
+    // a default to read back: a group's `clipWidth` and friends answer
+    // `undefined` until first set, which made `{ mode: 'by' }` write NaN and
+    // poison the attribute. Fall back to the attribute's own default (and to the
+    // same guard if a NaN already got in).
+    const base = Number.isFinite(original) ? original : def
+    result = changeMode === 'multiply' ? base * interpreted.value : base + interpreted.value
   }
   return constrain(result, constraints)
 }
