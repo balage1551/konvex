@@ -61,6 +61,7 @@ export abstract class KonvexContainer<
     }
     child._parent.value = this as unknown as KonvexNode<Konva.Node>
     this.bumpVersion()
+    this.signals.emit('child-added', { child, index: child.konvaRoot().zIndex() })
     return child
   }
 
@@ -84,6 +85,11 @@ export abstract class KonvexContainer<
     if (i < 0) return
     this._children.splice(i, 1)
     this.bumpVersion()
+    // Covers all three ways out — remove(), a re-parent, and a child destroying
+    // itself — because each of them comes through here. A container's *own*
+    // teardown does not: it empties the list first, so this returns above and
+    // the subtree reports itself through one `destroy` per node instead.
+    this.signals.emit('child-removed', { child })
   }
 
   /**

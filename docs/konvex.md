@@ -171,12 +171,44 @@ Read the relative one on the node whose geometry you are comparing against, and
 there is no transform maths to do. On the stage container's world layer it is the
 world coordinate — which is what `pointerWorld()` on the component returns.
 
-Three things deliberately are *not* events:
+#### DOM events (keyboard, and anything else Konva ignores)
+
+`bindDom(target, type, handler, options?)` is `bindTo` for a DOM target, with the
+same lifetime rule. Konva delivers no key events and the stage container takes no
+focus, so modifier state and shortcuts have to come from `window`:
+
+```ts
+widget.bindDom(window, 'keydown', e => (alt.value = e.altKey))
+```
+
+#### konvex signals
+
+Lifecycle facts have no DOM event behind them, so they live on a separate typed
+emitter, `signals`, on every konvex object:
+
+```ts
+node.signals.on('destroy', ({ node }) => forget(node))
+group.signals.on('child-added', ({ child, index }) => …)
+group.signals.on('child-removed', ({ child }) => …)
+```
+
+| Signal | Fired |
+| --- | --- |
+| `destroy` | from `destroy()`, **before** the scope stops and the Konva node goes, so the object is still readable. A subtree teardown emits one per node, deepest first. |
+| `child-added` | a child joined this container, including a re-parent |
+| `child-removed` | a child left: `remove()`, a re-parent into another container, or the child destroying itself. A container's *own* teardown does **not** enumerate its children — the subtree reports itself through `destroy`. |
+
+Signals don't bubble, and `on(...)`/`signals.on(...)` stay separate on purpose:
+one carries Konva's DOM events up the tree, the other carries konvex's own facts
+about one object. Both are dropped when the object is destroyed. `KonvexEmitter`
+is exported if you want the same thing for your own signals.
+
+Three things deliberately are *not* events at all:
 
 | Instead of | konvex uses |
 | --- | --- |
 | `<attr>Change` | the attribute's ref — `watch(shape.x, …)`. The change event drives ref invalidation internally. |
-| Konva's `add` | `childrenVersion`, a reactive counter on every container |
+| Konva's `add` | `childrenVersion` (reactive counter) for *state*, `child-added`/`child-removed` for *notification* |
 | `mousecancel` / `touchcancel` / `pointercancel` | `pointerup`. Konva lists those names but never fires them: a cancelled pointer is re-dispatched as `pointerup`. A cancelled *drag* still ends with `dragend`. |
 
 ---
@@ -231,6 +263,8 @@ reads the nearest ancestor's unless pinned by writing to it; see
 - `on(name | names, handler, { once? }): () => void` — typed Konva event(s); returns an `off`. See [Events](#events).
 - `once(name | names, handler): () => void` — removed after the first delivery.
 - `bindTo(target, name | names, handler, { once? }): () => void` — the same, on another node, with this object's lifetime (inherited from `KonvexBase`).
+- `bindDom(target, type, handler, options?): () => void` — a DOM listener with this object's lifetime (`KonvexBase`).
+- `signals` — konvex's own emitter: `destroy`, plus `child-added`/`child-removed` on a container. See [Events](#events).
 - Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End/Enter/Leave/Over/Out`, `onPointerDown/Up/Move/Enter/Leave/Over/Out`, `onPointerClick`, `onPointerDblClick`, `onGotPointerCapture`, `onLostPointerCapture`, `onDragStart/Move/End`, `onTransformStart/Transform/TransformEnd` — one per entry in [`KonvexEventMap`](#value-types), each with `event.evt` typed.
   The `transform*` trio comes from a `Konva.Transformer` the node is attached to;
   unlike the drag events these do **not** bubble, so bind them on the transformed
@@ -324,6 +358,8 @@ applies; the world constraint composes with it rather than replacing it.
 | `zoom` | `number` — new zoom level. |
 | `scroll` | `Vector2d` — new scroll position. |
 | `update:zoomLevel` | `number` — for `v-model:zoomLevel`. |
+| `world-resize` | `{ x, y, width, height }` — the world rect changed. Only `free`/`elastic` can fire it (their world follows the content); silent until after `ready`, since the first pass is the initial layout, not a change. |
+| `pointer` | `Vector2d \| null` — the pointer in **world** units on every move, `null` when it leaves. Read off the world layer, so zoom, scroll and the origin are already applied; fires over empty canvas too. |
 
 ### Exposed via template ref (`KonvexStageExpose`)
 
@@ -522,6 +558,8 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
 | `KonvexEventMap` | every event Konva dispatches on a node (37: mouse, touch, pointer, wheel, drag, transform), mapped to its DOM event type — see [Events](#events) |
 | `KonvaEventOptions` | `{ once?: boolean }` — the third argument of `on`/`bindTo` |
 | `KonvexEventObject<E>` | Konva's event object plus `konvexTarget` / `konvexCurrentTarget` |
+| `KonvexSignalMap` | `destroy`, `child-added`, `child-removed` — the payloads on `signals` |
+| `KonvexEmitter<M>` / `KonvexListener<T>` | the typed emitter behind `signals`, reusable for your own signals |
 
 ### Fill variants
 

@@ -118,7 +118,6 @@ export class EditableLine extends KonvexGroup {
   private _dragging = false
   private _handles: KonvexRect[] = []
   private _options: (PointOptions | undefined)[]
-  private readonly _onKey: (e: KeyboardEvent) => void
 
   constructor(config: EditableLineConfig = {}) {
     super(config)
@@ -230,10 +229,6 @@ export class EditableLine extends KonvexGroup {
       return this.konvaRoot().getStage()
     })
 
-    this._onKey = (e: KeyboardEvent) => {
-      this._altDown.value = e.altKey
-      this.updateAssist()
-    }
 
     this.rebuildHandles()
 
@@ -284,8 +279,15 @@ export class EditableLine extends KonvexGroup {
       )
     })
 
-    window.addEventListener('keydown', this._onKey)
-    window.addEventListener('keyup', this._onKey)
+    // Konva has no key events and the stage container takes no focus, so
+    // modifier state comes from the window — through `bindDom`, which drops the
+    // listener with this line rather than leaving it to `destroy()` to remember.
+    const onKey = (e: KeyboardEvent): void => {
+      this._altDown.value = e.altKey
+      this.updateAssist()
+    }
+    this.bindDom(window, 'keydown', onKey)
+    this.bindDom(window, 'keyup', onKey)
 
     // Dragging the whole line (the group body) also suppresses the assist. Handle
     // drags bubble up to here too and set the same two things again — harmless,
@@ -415,8 +417,8 @@ export class EditableLine extends KonvexGroup {
   }
 
   override destroy(): void {
-    window.removeEventListener('keydown', this._onKey)
-    window.removeEventListener('keyup', this._onKey)
+    // The key listeners and the stage listeners go with the scope (bindDom /
+    // bindTo). This one is added per rubber-band drag, so it can still be live.
     window.removeEventListener('mouseup', this._onWindowUp, true)
     this.detachStage()
     this.events.clear()

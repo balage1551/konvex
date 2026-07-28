@@ -20,6 +20,7 @@
                   @ready="onStageReady"
                   @zoom="onZoom"
                   @scroll="onViewChange"
+                  @pointer="onPointer"
                 />
                 <EditableLineToolbar
                   v-if="asEditableLine"
@@ -737,7 +738,7 @@ import PmiSplitPane from './components/PmiSplitPane.vue'
 import PmiSplitPaneContainer from './components/PmiSplitPaneContainer.vue'
 import Konva from 'konva'
 import { KonvexStageContainer } from '@balage1551/konvex'
-import type { KonvexStageExpose, WorldMode, ZoomMode } from '@balage1551/konvex'
+import type { KonvexStageExpose, Vector2d, WorldMode, ZoomMode } from '@balage1551/konvex'
 import type { KonvexStage } from '@balage1551/konvex'
 import type { KonvexLayer } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
@@ -1373,6 +1374,12 @@ function onZoom(z: number): void {
   zoomDisplay.value = z
   viewTick.value++
 }
+// Live world coordinate under the cursor — the container reports it already
+// converted, so there is nothing to convert here.
+function onPointer(p: Vector2d | null): void {
+  cursor.value = p
+  updateProjection()
+}
 function onViewChange(): void {
   viewTick.value++
 }
@@ -1448,15 +1455,6 @@ function onStageReady(stage: KonvexStage): void {
   })
   stage.onDblClick(e => {
     if (e.konvexTarget === stage) cancelPendingDeselect()
-  })
-  // Live world coordinate under the cursor (uses the stage's pointer utility).
-  stage.onMouseMove(() => {
-    cursor.value = kx.value?.pointerWorld() ?? null
-    updateProjection()
-  })
-  stage.onMouseLeave(() => {
-    cursor.value = null
-    updateProjection()
   })
 
   addCircle()

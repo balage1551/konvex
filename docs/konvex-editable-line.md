@@ -110,7 +110,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `scalableComponents` | `Ref<ScalableComponents>` | Live zoom-scaling set. |
 | `defaultMovable` | `Ref<PointMovement>` | Live line-wide movement default. |
 | `defaultSelectable` | `Ref<boolean>` | Live line-wide selectability default. |
-| `events` | `EditableLineEmitter` | Discrete events — see [toolbar-request](#toolbar-request-event). |
+| `events` | `KonvexEmitter<EditableLineEventMap>` | Discrete events — see [toolbar-request](#toolbar-request-event). (`EditableLineEmitter` is now an alias of the core emitter.) |
 | `pointCount` | `number` (getter) | Number of points. |
 
 ### Methods

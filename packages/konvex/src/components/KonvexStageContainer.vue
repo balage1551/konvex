@@ -73,6 +73,10 @@ const emit = defineEmits<{
   ready: [KonvexStage]
   zoom: [number]
   scroll: [Vector2d]
+  /** The world rect changed — the auto-sized modes resize it as content moves. */
+  'world-resize': [Rect]
+  /** Pointer in world units; `null` when it leaves the viewport. */
+  pointer: [Vector2d | null]
 }>()
 
 const rootEl = shallowRef<HTMLDivElement>()
@@ -86,6 +90,8 @@ const overlay = shallowRef<KonvexLayer>()
 const frameRect = shallowRef<KonvexRect>()
 
 let zoom = props.zoomLevel ?? 1
+/** Set once the stage exists and `ready` has fired; gates `world-resize`. */
+let ready = false
 // Cached world rect (origin + size, in world units). Recomputed only on content/
 // mode/size changes — never on the scroll hot path.
 let rect: Rect = { x: 0, y: 0, width: 1, height: 1 }
@@ -126,7 +132,18 @@ function computeWorldRect(): Rect {
   return { x: 0, y: 0, width: Math.max(1, s.x), height: Math.max(1, s.y) }
 }
 function recompute(): void {
+  const previous = rect
   rect = computeWorldRect()
+  // `free`/`elastic` resize the world as content moves, and until now nothing
+  // said so — a host could not react to a change it had caused itself. Silent
+  // until `ready`: the first pass is the initial layout, not a change, and a
+  // host has nothing to react with before it holds the stage.
+  const changed =
+    rect.x !== previous.x ||
+    rect.y !== previous.y ||
+    rect.width !== previous.width ||
+    rect.height !== previous.height
+  if (ready && changed) emit('world-resize', { ...rect })
 }
 function fitZoom(): number {
   const vp = viewport()
@@ -508,6 +525,13 @@ onMounted(() => {
   w.detach().on('dragmove', onContentDragMove)
   w.detach().on('dragend', onContentDragEnd)
 
+  // World-space pointer. Read off the world layer, so zoom, scroll and the world
+  // origin are already in it; on the stage, so it also fires over empty canvas.
+  s.detach().on('mousemove.kxpointer touchmove.kxpointer', () => {
+    emit('pointer', w.relativePointerPosition())
+  })
+  s.detach().on('mouseleave.kxpointer touchend.kxpointer', () => emit('pointer', null))
+
   recompute()
   syncViewportSize()
   if (props.zoomLevel !== undefined) commitZoom(clampZoom(props.zoomLevel))
@@ -522,6 +546,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(() => syncViewportSize())
   resizeObserver.observe(scrollEl.value!)
 
+  ready = true
   emit('ready', s)
 })
 

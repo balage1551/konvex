@@ -2,7 +2,7 @@
 // (e.g. "the user asked for the toolbar") from raw Konva pointer events, so a
 // Vue host can subscribe to `el.events.on('toolbar-request', …)` without
 // reaching into the underlying stage. Deliberately minimal; no framework dep.
-import type { Vector2d } from '@balage1551/konvex'
+import type { KonvexListener, Vector2d } from '@balage1551/konvex'
 
 /** Payload of a {@link EditableLineEventMap.toolbar-request}. */
 export interface EditableLineToolbarRequest {
@@ -19,31 +19,17 @@ export interface EditableLineEventMap {
   'toolbar-request': EditableLineToolbarRequest
 }
 
-export type EditableLineListener<T> = (payload: T) => void
+/** @deprecated Alias of konvex's {@link KonvexListener}. */
+export type EditableLineListener<T> = KonvexListener<T>
 
-/** Minimal typed multi-listener emitter. Returns an `off` fn from {@link on}. */
-export class EditableLineEmitter<M> {
-  private readonly _map = new Map<keyof M, Set<(p: unknown) => void>>()
-
-  on<K extends keyof M>(name: K, listener: EditableLineListener<M[K]>): () => void {
-    let set = this._map.get(name)
-    if (!set) {
-      set = new Set()
-      this._map.set(name, set)
-    }
-    const fn = listener as (p: unknown) => void
-    set.add(fn)
-    return () => set!.delete(fn)
-  }
-
-  emit<K extends keyof M>(name: K, payload: M[K]): void {
-    const set = this._map.get(name)
-    if (!set) return
-    // Snapshot so a listener that unsubscribes mid-dispatch is safe.
-    for (const fn of [...set]) (fn as EditableLineListener<M[K]>)(payload)
-  }
-
-  clear(): void {
-    this._map.clear()
-  }
-}
+/**
+ * The emitter behind {@link EditableLine.events}.
+ *
+ * konvex grew the same thing for its own signals (`destroy`, `child-added`, …),
+ * so this is now that class rather than a second copy of it — and gains `once`
+ * with the move.
+ *
+ * @deprecated Use {@link KonvexEmitter} directly; kept so existing annotations
+ * keep compiling.
+ */
+export { KonvexEmitter as EditableLineEmitter } from '@balage1551/konvex'

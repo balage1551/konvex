@@ -1,8 +1,9 @@
-import { effectScope, shallowRef, type EffectScope, type ShallowRef } from 'vue'
+import { effectScope, onScopeDispose, shallowRef, type EffectScope, type ShallowRef } from 'vue'
 import type Konva from 'konva'
 import type { KonvexNode } from './KonvexNode'
 import { bindKonvaEvent, type KonvaEventOptions } from './WrapperTools'
-import type { KonvexEventHandler, KonvexEventName } from './KonvexTypes'
+import { KonvexEmitter } from './KonvexEmitter'
+import type { KonvexEventHandler, KonvexEventName, KonvexSignalMap } from './KonvexTypes'
 
 export interface KonvexBaseConfig {
   /**
@@ -36,6 +37,13 @@ export abstract class KonvexBase {
 
   /** Logical owner; for a leaf shape this is itself. */
   readonly owner: KonvexBase
+
+  /**
+   * konvex's own signals — `destroy`, and on a container `child-added` /
+   * `child-removed`. Separate from `on(...)`, which is Konva's event system;
+   * see {@link KonvexEmitter} for the split. Cleared on {@link destroy}.
+   */
+  readonly signals = new KonvexEmitter<KonvexSignalMap>()
 
   /**
    * The container this object was added to (reactive; `undefined` when detached).
@@ -80,6 +88,31 @@ export abstract class KonvexBase {
   }
 
   /**
+   * Listen on a **DOM** target with this object's lifetime — the same deal as
+   * {@link bindTo}, for the events Konva has no concept of.
+   *
+   * Keyboard is the usual reason: a canvas widget that needs modifier state or
+   * shortcuts has to reach `window`, since Konva delivers no key events (and the
+   * stage's container is not focusable). Doing that by hand means matching every
+   * `addEventListener` with a `removeEventListener` in `destroy()`, which is the
+   * same bookkeeping that leaked stage listeners before {@link bindTo} existed.
+   *
+   * Returns an `off`; the listener is also removed when this object is destroyed.
+   */
+  bindDom<K extends keyof WindowEventMap>(
+    target: Window | Document | HTMLElement,
+    type: K,
+    handler: (event: WindowEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): () => void {
+    const listener = handler as EventListener
+    target.addEventListener(type, listener, options)
+    const off = () => target.removeEventListener(type, listener, options)
+    this.scope.run(() => onScopeDispose(off))
+    return off
+  }
+
+  /**
    * Drop `child` from this object's bookkeeping, touching nothing on the child
    * itself. A no-op for a leaf; {@link KonvexContainer} overrides it.
    *
@@ -103,6 +136,8 @@ export abstract class KonvexBase {
    * the stage's auto-sizing and measurement-scale propagation.
    */
   destroy(): void {
+    // Before anything is torn down, so a listener can still read this object.
+    this.signals.emit('destroy', { node: this })
     const parent = this._parent.value
     if (parent) {
       parent._releaseChild(this)
@@ -110,5 +145,6 @@ export abstract class KonvexBase {
     }
     this.scope.stop()
     this.konvaRoot().destroy()
+    this.signals.clear()
   }
 }

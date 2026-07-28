@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { LineCap, LineJoin } from 'konva/lib/Shape'
+import type { KonvexBase } from './KonvexBase'
 import type { KonvexNode } from './KonvexNode'
 import type { KonvexShape } from './KonvexShape'
 
@@ -311,6 +312,34 @@ export interface KonvexEventMap {
 
 /** A bindable konvex event name. */
 export type KonvexEventName = keyof KonvexEventMap
+
+/**
+ * konvex's own signals, on every object's `signals` emitter — the lifecycle
+ * facts Konva has no event for. See {@link KonvexEmitter} for why these are not
+ * part of {@link KonvexEventMap}.
+ *
+ * They do **not** bubble: subscribe on the object whose lifecycle you care
+ * about, or on its container for the child pair.
+ */
+export interface KonvexSignalMap {
+  /**
+   * This object is being torn down, fired from `destroy()` *before* its scope
+   * stops and its Konva node goes — so a listener can still read it.
+   *
+   * A container's teardown emits one of these per node, deepest first, and no
+   * `child-removed` for its own children: the whole subtree is going away, not
+   * being detached.
+   */
+  destroy: { node: KonvexBase }
+  /** A child joined this container — including one re-parented from elsewhere. */
+  'child-added': { child: KonvexBase; index: number }
+  /**
+   * A child left this container: `remove()`, a re-parent into another container,
+   * or the child destroying itself. To tell those apart, listen for the child's
+   * own `destroy`.
+   */
+  'child-removed': { child: KonvexBase }
+}
 
 /**
  * Konva's event object with the konvex objects behind it.
