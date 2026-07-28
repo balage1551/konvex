@@ -306,8 +306,31 @@ export class EditableLine extends KonvexGroup {
       this._dragging = true
       this.hideAssist()
     })
+    // All of the drag's bookkeeping lands here rather than on the handle, even
+    // though the handle is what gets dragged. Konva fires `dragend` with
+    // bubbling, so this sees every handle drag — and it still sees the last one
+    // when a structural edit destroys the dragged handle mid-drag: konvex stops
+    // a node's scope before Konva's `destroy()` reaches the `stopDrag()` that
+    // fires the event, so a handler on the handle itself is swallowed exactly
+    // when it matters. That used to leave `_dragOrigins` and `_dragAnchorIndex`
+    // pointing at a drag that was over, the axis guide on screen for good, and
+    // no `point-moved` for the move that had just happened.
     this.onDragEnd(() => {
       this._dragging = false
+      this._dragAnchorIndex = -1
+      // One report per point the drag actually moved, measured from where the
+      // drag started — a drag that ends where it began says nothing. Indices can
+      // have shifted under us (that structural edit), so skip anything now past
+      // the end rather than reading a NaN back out of the geometry.
+      for (const o of this._dragOrigins) {
+        if (o.index >= this.pointCount) continue
+        const p = this.pointAt(o.index)
+        if (p.x !== o.x || p.y !== o.y) {
+          this.events.emit('point-moved', { index: o.index, point: p, from: { x: o.x, y: o.y } })
+        }
+      }
+      this._dragOrigins = []
+      this.hideDragConstraint()
     })
 
     this.line.onDblClick(e => {
@@ -573,20 +596,6 @@ export class EditableLine extends KonvexGroup {
         const p = this.pointAt(i)
         return { index: i, x: p.x, y: p.y }
       })
-    })
-    h.onDragEnd(() => {
-      this._dragging = false
-      this._dragAnchorIndex = -1
-      // One report per point the drag actually moved, measured from where the
-      // drag started — a drag that ends where it began says nothing.
-      for (const o of this._dragOrigins) {
-        const p = this.pointAt(o.index)
-        if (p.x !== o.x || p.y !== o.y) {
-          this.events.emit('point-moved', { index: o.index, point: p, from: { x: o.x, y: o.y } })
-        }
-      }
-      this._dragOrigins = []
-      this.hideDragConstraint()
     })
     h.onDragMove(e => {
       const idx = this._handles.indexOf(h)
