@@ -444,18 +444,42 @@ function anchorOf(e: { clientX: number; clientY: number }): Vector2d {
   const rect = viewportEl.value!.getBoundingClientRect()
   return { x: e.clientX - rect.left, y: e.clientY - rect.top }
 }
+/**
+ * A wheel event's delta in CSS pixels, whatever unit the browser reported.
+ *
+ * `deltaMode` is 0 for pixels, 1 for lines and 2 for pages. Firefox reports
+ * lines — about 3 per notch — so an unnormalised `deltaY` scrolls 3px there
+ * against ~100px in Chrome. A line is taken as 16px, the usual default
+ * line-height; a page as the viewport.
+ */
+function wheelPixels(e: WheelEvent): Vector2d {
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? viewport().y : 1
+  return { x: e.deltaX * unit, y: e.deltaY * unit }
+}
 function onWheel(e: WheelEvent): void {
-  if (e.ctrlKey && props.zoomOnWheel) {
+  if (e.ctrlKey) {
+    // Ctrl+wheel is the browser's own zoom gesture (and what a trackpad pinch
+    // arrives as). Take it over only when we actually zoom — with `zoomOnWheel`
+    // off it used to fall through and be consumed as a scroll, so the gesture
+    // did nothing at all instead of zooming the page.
+    if (!props.zoomOnWheel) return
     e.preventDefault()
     if (e.deltaY < 0) zoomIn(anchorOf(e))
     else zoomOut(anchorOf(e))
     return
   }
-  // Canvas overlays the scroll container, so forward wheel to it manually:
-  // plain → vertical, shift → horizontal.
-  e.preventDefault()
-  if (e.shiftKey) scrollBy(e.deltaY || e.deltaX, 0)
-  else scrollBy(e.deltaX, e.deltaY)
+  // The canvas overlays the scroll container, so forward the wheel to it by
+  // hand: plain → vertical, shift → horizontal.
+  const el = scrollEl.value
+  if (!el) return
+  const d = wheelPixels(e)
+  const before = { x: el.scrollLeft, y: el.scrollTop }
+  if (e.shiftKey) scrollBy(d.y || d.x, 0)
+  else scrollBy(d.x, d.y)
+  // Consume the event only if it moved us. Unconditional `preventDefault` meant
+  // a page could never scroll past the stage: once the viewport was at the end
+  // of its range the wheel went nowhere, rather than continuing the page scroll.
+  if (el.scrollLeft !== before.x || el.scrollTop !== before.y) e.preventDefault()
 }
 
 let pinch: { dist: number; anchor: Vector2d; zoom0: number } | null = null

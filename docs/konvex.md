@@ -310,6 +310,12 @@ Config: `KonvexShapeConfig extends KonvexNodeConfig` — `fill`, `stroke`,
 
 ### `KonvexContainer<T, Ch>` — Stage / Layer / Group
 
+`children` is in **z-order**: `add(child, index)` inserts at that index in both
+konvex's list and Konva's, so `children[i]` is the i-th node on screen. `Ch` is
+the child type a container accepts — layers for a stage, shapes and groups
+(`KonvexContent`) for a layer or a group, which is Konva's own rule
+(`_validateAdd`) expressed in the type system.
+
 - `children: readonly Ch[]`
 - `childrenVersion: number` — reactive; bumps on any add/remove here *or* in any
   descendant container, since the bump bubbles up the ancestor chain. (Konva's own
@@ -345,7 +351,7 @@ unscaled **overlay** layer, and provides zoom / scroll / world-mode.
 | `zoomStep` / `zoomStepType` | `number` / `'additive' \| 'multiplicative'` | — | Grid increment for `'proportional'`. |
 | `zoomBase` | `number` | `1` | Grid anchor (100%). |
 | `minZoom` / `maxZoom` | `number \| 'fit'` / `number` | — | `'fit'` = can't zoom out past contain-fit. |
-| `zoomOnWheel` | `boolean` | — | Enable ctrl+wheel / pinch zoom. |
+| `zoomOnWheel` | `boolean` | — | Enable ctrl+wheel / pinch zoom. With it off, ctrl+wheel is left to the browser (page zoom) rather than consumed. |
 | `background` | `string` | — | CSS background of the viewport. |
 | `frame` | `string` | — | Draw a 1px boundary frame around the content extent, in this colour. |
 
@@ -571,6 +577,7 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
 | `KonvexEventMap` | every event Konva dispatches on a node (37: mouse, touch, pointer, wheel, drag, transform), mapped to its DOM event type — see [Events](#events) |
 | `KonvaEventOptions` | `{ once?: boolean }` — the third argument of `on`/`bindTo` |
 | `KonvexEventObject<E>` | Konva's event object plus `konvexTarget` / `konvexCurrentTarget` |
+| `KonvexContent` | `AnyShape \| KonvexGroup` — what a layer or group may hold |
 | `KonvexSignalMap` | `destroy`, `child-added`, `child-removed` — the payloads on `signals` |
 | `KonvexEmitter<M>` / `KonvexListener<T>` | the typed emitter behind `signals`, reusable for your own signals |
 
