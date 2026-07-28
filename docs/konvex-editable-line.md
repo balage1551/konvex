@@ -9,6 +9,7 @@ Selection and point coordinates are **reactive**, so a host can `watch` them.
 - [Interactions](#interactions)
 - [`EditableLine`](#editableline) — config, reactive state, methods
 - [Toolbar framework](#toolbar-framework)
+- [Point events](#point-events)
 - [Types](#types)
 
 ---
@@ -219,6 +220,46 @@ el.events.on('toolbar-request', ({ pointerScreen, pointerWorld, selection }) => 
 
 ---
 
+## Point events
+
+The line's points are what an `EditableLine` manages, so their comings and goings
+are events on the same `el.events` emitter — a `KonvexEmitter`, so `on` returns an
+`off` and `once` works too. Every payload is in the line's own coordinates, and
+every one is emitted *after* the edit has settled: a handler can read
+`pointCount` / `pointInfos` and see the result.
+
+| Event | Payload | Fired by |
+| --- | --- | --- |
+| `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
+| `point-removed` | `{ index, point, count }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
+| `point-moved` | `{ index, point, from, dragging }` | a drag (`dragging: true`), `movePoint`, `straightenSelection` |
+| `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` |
+
+```ts
+el.events.on('point-moved', ({ index, point, dragging }) => {
+  if (!dragging) store.commit(index, point)   // settled edits only
+})
+el.events.on('points-replaced', () => store.reload(el.pointInfos.value))
+```
+
+Three things worth knowing:
+
+- **`point-moved` during a drag is a stream** — one event per moved point per
+  frame, with `from` being the *previous frame* so deltas accumulate. A
+  multi-point drag moves the whole selection, so expect several per frame. For the
+  settled value, either filter on `dragging` or use the line's `dragend`.
+- **`points-replaced` is deliberately coarse.** When the array is swapped
+  wholesale, the old and new points cannot be matched up without guessing, so
+  konvex does not invent per-point events for it: treat any index-keyed state you
+  hold as invalid and re-read. `simplify()` reports this way too — which points
+  survived a reshape is not a sequence of removals.
+- **These are not the container signals.** An `EditableLine` is a `KonvexGroup`,
+  so it also has core `signals` with `child-added`/`child-removed` — those
+  describe its *internal* structure (the line, the assist group, the handle
+  group), not its points.
+
+---
+
 ## Types
 
 - `PointMovement` = `'free' | 'x' | 'y' | false`
@@ -228,6 +269,9 @@ el.events.on('toolbar-request', ({ pointerScreen, pointerWorld, selection }) => 
   `defaultHandleStyle(state)` is the default styler (exported).
 - `HandleShow` = `'always' | 'whenSelected' | 'never'`; `AssistShow` = `'always' | 'onAlt' | 'never'`.
 - `ScalableComponent` = `'line' | 'marker' | 'helper'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
+- `EditableLinePointChange` = `{ index, point, count }`; `EditableLinePointMove` =
+  `{ index, point, from, dragging }`; `EditableLinePointsReplaced` = `{ count }` —
+  see [point events](#point-events).
 - `ToolbarItemState` = `'hidden' | 'disabled' | 'enabled'`.
 - `ToolbarItemSpec` = `EditableLineToolbarItem | string`.
 - `SimplificationThreshold`, `Vector2d`, `LineProjectionPart` / `LineProjectionScope` /

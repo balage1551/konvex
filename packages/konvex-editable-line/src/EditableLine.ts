@@ -18,7 +18,11 @@ import {
   type ScalableComponent,
   type ScalableComponents,
 } from './EditableLine-types'
-import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-events'
+import {
+  EditableLineEmitter,
+  type EditableLineEventMap,
+  type EditableLinePointMove,
+} from './EditableLine-events'
 
 /** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
 const DEFAULT_SNAP_THRESHOLD = 10
@@ -116,6 +120,8 @@ export class EditableLine extends KonvexGroup {
   private readonly _altDown = ref(false)
   private readonly _optionsTick = ref(0)
   private _dragging = false
+  /** Set by {@link writePoints}; consumed by the wholesale-replace watch. */
+  private _selfWrite = false
   private _handles: KonvexRect[] = []
   private _options: (PointOptions | undefined)[]
 
@@ -261,11 +267,18 @@ export class EditableLine extends KonvexGroup {
       watch(
         () => this.line.points.value,
         () => {
+          // Consume the marker first: whether or not the rest of this runs, the
+          // next write starts unmarked.
+          const own = this._selfWrite
+          this._selfWrite = false
           // A handle drag writes points on every move; applyDragDelta has already
           // moved the handles it touched, and re-positioning mid-drag would fight
           // Konva's own drag positioning.
           if (this._dragging) return
           this.syncToPoints()
+          // Only a write this class did not make gets here unreported: EL's own
+          // editing methods emit their precise `point-*` event at the call site.
+          if (!own) this.events.emit('points-replaced', { count: this.pointCount })
         }
       )
       // Attach/detach stage listeners as the line enters/leaves a stage.
@@ -328,28 +341,35 @@ export class EditableLine extends KonvexGroup {
     const i = Math.max(0, Math.min(index, this.pointCount))
     const f = [...this.line.points.value]
     f.splice(i * 2, 0, p.x, p.y)
-    this.line.points.value = f
+    this.writePoints(f)
     this._options.splice(i, 0, options)
     this.selection.value = this.selection.value.map(s => (s >= i ? s + 1 : s))
     this.rebuildHandles()
+    // Emitted last, so a handler reading the line back sees it settled.
+    this.events.emit('point-added', { index: i, point: { x: p.x, y: p.y }, count: this.pointCount })
     return i
   }
 
   removePoint(index: number): void {
     if (index < 0 || index >= this.pointCount) return
+    const gone = this.pointAt(index)
     const f = [...this.line.points.value]
     f.splice(index * 2, 2)
-    this.line.points.value = f
+    this.writePoints(f)
     this._options.splice(index, 1)
     this.selection.value = this.selection.value.filter(s => s !== index).map(s => (s > index ? s - 1 : s))
     this.rebuildHandles()
+    this.events.emit('point-removed', { index, point: gone, count: this.pointCount })
   }
 
   movePoint(index: number, p: Vector2d): void {
     if (index < 0 || index >= this.pointCount) return
+    const from = this.pointAt(index)
+    if (from.x === p.x && from.y === p.y) return // nothing moved, nothing to report
     this.setPointCoord(index, p.x, p.y)
     const h = this._handles[index]
     if (h) h.position.value = { x: p.x, y: p.y }
+    this.events.emit('point-moved', { index, point: { x: p.x, y: p.y }, from, dragging: false })
   }
 
   select(index: number, opts: { extend?: boolean } = {}): void {
@@ -399,10 +419,13 @@ export class EditableLine extends KonvexGroup {
     for (let i = 0; i * 2 + 1 < f.length; i++) pts.push({ x: f[i * 2], y: f[i * 2 + 1] })
     const out = simplifyPoints(pts, threshold)
     if (out.length === pts.length) return // nothing collapsed
-    this.line.points.value = out.flatMap(p => [p.x, p.y])
+    this.writePoints(out.flatMap(p => [p.x, p.y]))
     this._options = out.map(() => undefined)
     this.clearSelection()
     this.rebuildHandles()
+    // A reshape of the whole polyline: which points survived is not expressible
+    // as a sequence of removals, so report it as the replacement it is.
+    this.events.emit('points-replaced', { count: this.pointCount })
   }
 
   setPointOptions(index: number, options: PointOptions | undefined): void {
@@ -456,11 +479,24 @@ export class EditableLine extends KonvexGroup {
     return { x: f[i * 2], y: f[i * 2 + 1] }
   }
 
+  /**
+   * The one place EL writes geometry.
+   *
+   * Marks the write as its own so the wholesale-replace watch can tell an edit
+   * that came through this class (which emits its own precise `point-*` event)
+   * from one a host made by assigning `line.points` (which can only be reported
+   * as `points-replaced`).
+   */
+  private writePoints(flat: number[]): void {
+    this._selfWrite = true
+    this.line.points.value = flat
+  }
+
   private setPointCoord(i: number, x: number, y: number): void {
     const f = [...this.line.points.value]
     f[i * 2] = x
     f[i * 2 + 1] = y
-    this.line.points.value = f
+    this.writePoints(f)
   }
 
   /**
@@ -588,17 +624,32 @@ export class EditableLine extends KonvexGroup {
    */
   private applyDragDelta(dx: number, dy: number): void {
     const f = [...this.line.points.value]
+    const moved: EditableLinePointMove[] = []
     for (const o of this._dragOrigins) {
       const mv = this.effectiveMovable(o.index)
       if (mv === false) continue
       const nx = o.x + (mv === 'y' ? 0 : dx)
       const ny = o.y + (mv === 'x' ? 0 : dy)
+      // `from` is the previous frame, not the drag origin, so a handler can
+      // accumulate deltas; a frame that moves a point nowhere stays silent.
+      const px = f[o.index * 2]
+      const py = f[o.index * 2 + 1]
+      if (px !== nx || py !== ny) {
+        moved.push({
+          index: o.index,
+          point: { x: nx, y: ny },
+          from: { x: px, y: py },
+          dragging: true,
+        })
+      }
       f[o.index * 2] = nx
       f[o.index * 2 + 1] = ny
       const hh = this._handles[o.index]
       if (hh) hh.position.value = { x: nx, y: ny }
     }
-    this.line.points.value = f
+    this.writePoints(f)
+    // After the write, so the line reads settled inside a handler.
+    for (const m of moved) this.events.emit('point-moved', m)
   }
 
   /** Draw (or hide) the axis guide through the dragged point at (x, y). */
