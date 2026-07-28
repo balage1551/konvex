@@ -89,7 +89,12 @@ const world = shallowRef<KonvexLayer>()
 const overlay = shallowRef<KonvexLayer>()
 const frameRect = shallowRef<KonvexRect>()
 
-let zoom = props.zoomLevel ?? 1
+/**
+ * Current zoom, as a ref rather than a plain number so the `zoomLevel` on the
+ * exposed API is *reactive*: a template reading `kx.zoomLevel` re-renders when it
+ * changes, instead of having to mirror the `zoom` event into local state.
+ */
+const zoom = shallowRef(props.zoomLevel ?? 1)
 /** Set once the stage exists and `ready` has fired; gates `world-resize`. */
 let ready = false
 // Cached world rect (origin + size, in world units). Recomputed only on content/
@@ -157,7 +162,7 @@ function clampZoom(z: number): number {
   return Math.min(props.maxZoom, Math.max(effMin(), z))
 }
 
-// --- zoom grid / snapping -------------------------------------------------
+// --- zoom.value grid / snapping -------------------------------------------------
 function sortedLevels(): number[] {
   return [...props.zoomLevels].sort((a, b) => a - b)
 }
@@ -187,10 +192,10 @@ function snapZoom(z: number): number {
 function steppedZoom(dir: 1 | -1): number {
   if (props.zoomMode === 'steps') {
     const levels = sortedLevels()
-    if (dir > 0) return clampZoom(levels.find(l => l > zoom + 1e-6) ?? zoom)
-    return clampZoom([...levels].reverse().find(l => l < zoom - 1e-6) ?? zoom)
+    if (dir > 0) return clampZoom(levels.find(l => l > zoom.value + 1e-6) ?? zoom.value)
+    return clampZoom([...levels].reverse().find(l => l < zoom.value - 1e-6) ?? zoom.value)
   }
-  const snapped = snapZoom(zoom)
+  const snapped = snapZoom(zoom.value)
   if (props.zoomStepType === 'additive') {
     const step = props.zoomStep ?? 0.25
     return clampZoom(snapped + dir * step)
@@ -213,7 +218,7 @@ function updateFrame(): void {
   f.visible.value = true
   f.strokeColor.value = props.frame
   f.position.value = { x: -el.scrollLeft, y: -el.scrollTop }
-  f.size.value = { x: rect.width * zoom, y: rect.height * zoom }
+  f.size.value = { x: rect.width * zoom.value, y: rect.height * zoom.value }
 }
 /** Clip the content layer to the specified rect in `clipped` mode (else off). */
 function applyClip(): void {
@@ -233,7 +238,7 @@ function applyClip(): void {
   }
 }
 /**
- * Apply the full viewport transform from the cached `rect`, current `zoom` and
+ * Apply the full viewport transform from the cached `rect`, current `zoom.value` and
  * scroll: spacer (scroll extent), content scale, content position (origin folded
  * in), clip and frame. Cheap — no content measuring — so safe on the scroll path.
  */
@@ -242,12 +247,12 @@ function applyTransform(): void {
   const w = world.value
   if (!el || !w) return
   if (spacerEl.value) {
-    spacerEl.value.style.width = `${rect.width * zoom}px`
-    spacerEl.value.style.height = `${rect.height * zoom}px`
+    spacerEl.value.style.width = `${rect.width * zoom.value}px`
+    spacerEl.value.style.height = `${rect.height * zoom.value}px`
   }
-  w.scale.value = { x: zoom, y: zoom }
+  w.scale.value = { x: zoom.value, y: zoom.value }
   // origin lives entirely here — objects keep their real coordinates.
-  w.position.value = { x: -(rect.x * zoom + el.scrollLeft), y: -(rect.y * zoom + el.scrollTop) }
+  w.position.value = { x: -(rect.x * zoom.value + el.scrollLeft), y: -(rect.y * zoom.value + el.scrollTop) }
   applyClip()
   updateFrame()
 }
@@ -279,9 +284,9 @@ function clampsDrag(): boolean {
  */
 function clampDragPosition(node: Konva.Node, pos: Vector2d): Vector2d {
   const wn = world.value?.detach()
-  if (!wn || !zoom) return pos
+  if (!wn || !zoom.value) return pos
   const r = node.getClientRect({ relativeTo: wn, skipShadow: true })
-  return clampDragAbsolute(r, node.absolutePosition(), pos, zoom, rect)
+  return clampDragAbsolute(r, node.absolutePosition(), pos, zoom.value, rect)
 }
 
 type DragBoundFn = (this: Konva.Node, pos: Vector2d) => Vector2d
@@ -322,7 +327,7 @@ function onContentDragMove(e: Konva.KonvaEventObject<DragEvent>): void {
 }
 
 /**
- * Set zoom to `z`, keeping the world point under `anchor` (canvas-pixel coords;
+ * Set zoom.value to `z`, keeping the world point under `anchor` (canvas-pixel coords;
  * default viewport centre) fixed. The browser clamps `scrollLeft/Top` to
  * `[0, contentVis − viewport]`, which enforces the no-top/left-void invariant.
  */
@@ -332,10 +337,11 @@ function commitZoom(z: number, anchor?: Vector2d): void {
   const vp = viewport()
   const ax = anchor?.x ?? vp.x / 2
   const ay = anchor?.y ?? vp.y / 2
-  const worldX = (ax + el.scrollLeft) / zoom
-  const worldY = (ay + el.scrollTop) / zoom
+  const worldX = (ax + el.scrollLeft) / zoom.value
+  const worldY = (ay + el.scrollTop) / zoom.value
 
-  zoom = z
+  const changed = z !== zoom.value
+  zoom.value = z
   applyTransform()
   // Re-anchor (browser clamps to the valid range → no void on top/left). The
   // world origin cancels in this round-trip, so it isn't needed here.
@@ -343,8 +349,14 @@ function commitZoom(z: number, anchor?: Vector2d): void {
   el.scrollTop = worldY * z - ay
   applyTransform()
 
-  emit('update:zoomLevel', z)
-  emit('zoom', z)
+  // Only report a level that actually moved. Every ResizeObserver tick re-clamps
+  // (a bigger viewport lowers the `fit` floor), and emitting unconditionally
+  // meant a plain window resize fired `zoom` and `update:zoomLevel` at the same
+  // value — noise a host had to filter, and a v-model echo for nothing.
+  if (changed) {
+    emit('update:zoomLevel', z)
+    emit('zoom', z)
+  }
 }
 
 // --- public API (exposed) -------------------------------------------------
@@ -352,7 +364,7 @@ function zoomTo(level: number, anchor?: Vector2d): void {
   commitZoom(snapZoom(level), anchor)
 }
 function zoomBy(factor: number, anchor?: Vector2d): void {
-  commitZoom(snapZoom(zoom * factor), anchor)
+  commitZoom(snapZoom(zoom.value * factor), anchor)
 }
 function zoomIn(anchor?: Vector2d): void {
   commitZoom(steppedZoom(1), anchor)
@@ -381,7 +393,7 @@ function fitTargetZoom(kind: FitKind): number {
 /**
  * Fit, converging on scrollbars: applying a fit can make a scrollbar appear,
  * which shrinks the viewport — so we re-measure (`viewport()` forces a reflow
- * reflecting the just-set spacer) and refit until the zoom settles. Without
+ * reflecting the just-set spacer) and refit until the zoom.value settles. Without
  * this, "fit width" overshoots and shows *both* scrollbars.
  */
 function doFit(kind: FitKind): void {
@@ -391,15 +403,15 @@ function doFit(kind: FitKind): void {
   for (let i = 0; i < 4; i++) {
     const z = clampZoom(fitTargetZoom(kind))
     const converged = Math.abs(z - last) < 1e-4
-    zoom = z
+    zoom.value = z
     el.scrollLeft = 0
     el.scrollTop = 0
     applyTransform()
     if (converged) break
     last = z
   }
-  emit('update:zoomLevel', zoom)
-  emit('zoom', zoom)
+  emit('update:zoomLevel', zoom.value)
+  emit('zoom', zoom.value)
   emit('scroll', { x: 0, y: 0 })
 }
 function zoomToFit(): void {
@@ -418,13 +430,13 @@ function screenToWorld(p: Vector2d): Vector2d {
   const el = scrollEl.value
   const sx = el?.scrollLeft ?? 0
   const sy = el?.scrollTop ?? 0
-  return { x: (p.x + sx) / zoom + rect.x, y: (p.y + sy) / zoom + rect.y }
+  return { x: (p.x + sx) / zoom.value + rect.x, y: (p.y + sy) / zoom.value + rect.y }
 }
 function worldToScreen(p: Vector2d): Vector2d {
   const el = scrollEl.value
   const sx = el?.scrollLeft ?? 0
   const sy = el?.scrollTop ?? 0
-  return { x: (p.x - rect.x) * zoom - sx, y: (p.y - rect.y) * zoom - sy }
+  return { x: (p.x - rect.x) * zoom.value - sx, y: (p.y - rect.y) * zoom.value - sy }
 }
 /** World coordinate under the current Konva pointer (e.g. the cursor), or null. */
 function pointerWorld(): Vector2d | null {
@@ -458,8 +470,8 @@ function wheelPixels(e: WheelEvent): Vector2d {
 }
 function onWheel(e: WheelEvent): void {
   if (e.ctrlKey) {
-    // Ctrl+wheel is the browser's own zoom gesture (and what a trackpad pinch
-    // arrives as). Take it over only when we actually zoom — with `zoomOnWheel`
+    // Ctrl+wheel is the browser's own zoom.value gesture (and what a trackpad pinch
+    // arrives as). Take it over only when we actually zoom.value — with `zoomOnWheel`
     // off it used to fall through and be consumed as a scroll, so the gesture
     // did nothing at all instead of zooming the page.
     if (!props.zoomOnWheel) return
@@ -497,20 +509,20 @@ function touchInfo(e: TouchEvent): { dist: number; anchor: Vector2d } {
 function onTouchStart(e: TouchEvent): void {
   if (e.touches.length !== 2 || !props.zoomOnWheel) return
   const t = touchInfo(e)
-  pinch = { dist: t.dist, anchor: t.anchor, zoom0: zoom }
+  pinch = { dist: t.dist, anchor: t.anchor, zoom0: zoom.value }
   e.preventDefault()
 }
 function onTouchMove(e: TouchEvent): void {
   if (!pinch || e.touches.length !== 2) return
   e.preventDefault()
   const t = touchInfo(e)
-  // Free (unsnapped) zoom during the gesture.
+  // Free (unsnapped) zoom.value during the gesture.
   commitZoom(clampZoom((pinch.zoom0 * t.dist) / pinch.dist), t.anchor)
 }
 function onTouchEnd(e: TouchEvent): void {
   if (!pinch) return
   if (e.touches.length < 2) {
-    commitZoom(snapZoom(zoom), pinch.anchor) // snap-on-commit
+    commitZoom(snapZoom(zoom.value), pinch.anchor) // snap-on-commit
     pinch = null
   }
 }
@@ -526,7 +538,7 @@ function syncViewportSize(): void {
   vEl.style.height = `${h}px`
   stage.value.size.value = { x: w, y: h }
   // A larger viewport can lower the 'fit' floor — re-clamp so we never sit below it.
-  commitZoom(clampZoom(zoom))
+  commitZoom(clampZoom(zoom.value))
 }
 
 let resizeObserver: ResizeObserver | undefined
@@ -549,7 +561,7 @@ onMounted(() => {
   w.detach().on('dragmove', onContentDragMove)
   w.detach().on('dragend', onContentDragEnd)
 
-  // World-space pointer. Read off the world layer, so zoom, scroll and the world
+  // World-space pointer. Read off the world layer, so zoom.value, scroll and the world
   // origin are already in it; on the stage, so it also fires over empty canvas.
   s.detach().on('mousemove.kxpointer touchmove.kxpointer', () => {
     emit('pointer', w.relativePointerPosition())
@@ -590,14 +602,14 @@ onBeforeUnmount(() => {
 watch(
   () => props.zoomLevel,
   v => {
-    if (v !== undefined && v !== zoom) commitZoom(snapZoom(v))
+    if (v !== undefined && v !== zoom.value) commitZoom(snapZoom(v))
   },
 )
 watch(
   () => props.contentSize,
   () => {
     recompute()
-    commitZoom(clampZoom(zoom))
+    commitZoom(clampZoom(zoom.value))
   },
   { deep: true },
 )
@@ -605,7 +617,7 @@ watch(
   () => props.worldMode,
   () => {
     recompute()
-    commitZoom(clampZoom(zoom))
+    commitZoom(clampZoom(zoom.value))
   },
 )
 // Konva fires no child-add event; the container's reactive version does.
@@ -616,6 +628,11 @@ watch(
     applyTransform()
   },
 )
+// The bounds are props: a host that lowers `maxZoom` (or switches `minZoom` to
+// 'fit') while zoomed in past it would otherwise stay outside them until the next
+// zoom action. `zoomLevels` needs no watch — it only feeds stepping and snapping,
+// which read it when they run.
+watch([() => props.minZoom, () => props.maxZoom], () => commitZoom(clampZoom(zoom.value)))
 watch(() => props.frame, updateFrame)
 // Originate the measurement scale on the world; every descendant inherits it
 // through `unitScale` (a pull), so nothing has to be propagated on add. Runs on
@@ -635,7 +652,7 @@ defineExpose({
     return overlay.value
   },
   get zoomLevel() {
-    return zoom
+    return zoom.value
   },
   get scale() {
     return props.scale

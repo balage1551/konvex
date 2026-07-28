@@ -53,7 +53,7 @@ write can be absolute, relative, or a reset:
 | Write | Effect |
 | --- | --- |
 | `5` or `{ value: 5 }` or `{ mode: 'to', value: 5 }` | set to 5 |
-| `{ mode: 'by', value: 5 }` | change by 5 (added; **multiplied** for `scale`) |
+| `{ mode: 'by', value: 5 }` | change by 5 (added; **multiplied** for `scale`). An attribute Konva has no default for (a group's `clip*`) counts as its default, not `undefined`. |
 | `{ mode: 'reset' }` or `undefined` | restore the attribute's default |
 
 The vector views (`position`, `size`, `scale`, `skew`, `offset`) accept a
@@ -111,7 +111,9 @@ cumulative (absolute) scale as computed refs.
 
 While this is `false`, the node's own `scaleX`/`scaleY` are konvex's to set: a
 scale written from elsewhere — including by a `Konva.Transformer` — is reverted
-on the next flush. Set `scalable` back to `true` to take the scale over.
+on the next flush. Setting `scalable` back to `true` hands the scale back *and
+restores the value it had* before compensation started, so the flag is a toggle
+rather than a one-way door.
 
 ### Events
 
@@ -271,7 +273,7 @@ reads the nearest ancestor's unless pinned by writing to it; see
 [Measurement scale](#measurement-scale-unitscale).
 
 **Methods:**
-- `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
+- `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch). `detach()` is an alias and does *not* remove the node from its parent; use `parent.remove(node)` for that.
 - `pointerPosition(): Vector2d | null` / `relativePointerPosition(): Vector2d | null` — the pointer in stage space / in this node's own space. See [Events](#events).
 - **z-order:** `zIndex` (a reactive `ComputedRef<number>` — 0 is at the back) plus `setZIndex(i): number`, `moveToTop()`, `moveToBottom()`, `moveUp()`, `moveDown()`. The four movers return whether anything moved; `setZIndex` clamps quietly and returns where it landed. Each keeps the parent's `children` in step with Konva — reordering through Konva directly (`node.detach().moveToTop()`) does not, though the next konvex reorder re-sorts from Konva and repairs it.
 - `on(name | names, handler, { once? }): () => void` — typed Konva event(s); returns an `off`. See [Events](#events).
@@ -353,7 +355,7 @@ unscaled **overlay** layer, and provides zoom / scroll / world-mode.
 | `zoomLevels` | `number[]` | `[0.25,0.5,0.75,1,1.5,2,3,4]` | Grid for `'steps'`. |
 | `zoomStep` / `zoomStepType` | `number` / `'additive' \| 'multiplicative'` | — | Grid increment for `'proportional'`. |
 | `zoomBase` | `number` | `1` | Grid anchor (100%). |
-| `minZoom` / `maxZoom` | `number \| 'fit'` / `number` | — | `'fit'` = can't zoom out past contain-fit. |
+| `minZoom` / `maxZoom` | `number \| 'fit'` / `number` | — | `'fit'` = can't zoom out past contain-fit. Changing either re-clamps the current level. |
 | `zoomOnWheel` | `boolean` | — | Enable ctrl+wheel / pinch zoom. With it off, ctrl+wheel is left to the browser (page zoom) rather than consumed. |
 | `background` | `string` | — | CSS background of the viewport. |
 | `frame` | `string` | — | Draw a 1px boundary frame around the content extent, in this colour. |
@@ -377,9 +379,9 @@ applies; the world constraint composes with it rather than replacing it.
 | Event | Payload |
 | --- | --- |
 | `ready` | `KonvexStage` — fired once the stage is mounted. |
-| `zoom` | `number` — new zoom level. |
+| `zoom` | `number` — new zoom level. Only fires when the level actually changes, so a plain resize is silent. |
 | `scroll` | `Vector2d` — new scroll position. |
-| `update:zoomLevel` | `number` — for `v-model:zoomLevel`. |
+| `update:zoomLevel` | `number` — for `v-model:zoomLevel`. Not echoed when the level did not change. |
 | `world-resize` | `{ x, y, width, height }` — the world rect changed. Only `free`/`elastic` can fire it (their world follows the content); silent until after `ready`, since the first pass is the initial layout, not a change. |
 | `pointer` | `Vector2d \| null` — the pointer in **world** units on every move, `null` when it leaves. Read off the world layer, so zoom, scroll and the origin are already applied; fires over empty canvas too. |
 
@@ -395,7 +397,7 @@ const kx = shallowRef<KonvexStageExpose>()
 | `stage` | The owned `KonvexStage` (escape hatch). |
 | `world` | `KonvexLayer` — **add your shapes/groups here** (transformed). |
 | `overlay` | `KonvexLayer` — unscaled screen-space layer for adornments. |
-| `zoomLevel`, `scale` | Live values. |
+| `zoomLevel`, `scale` | Live values. `zoomLevel` is reactive — read it in a template or computed and it re-evaluates on zoom. |
 | `pointerWorld()` | World coordinate under the pointer, or `null`. |
 | `scaledLength(n)` / `scaledArea(n)` | Convert a world length/area to real units. |
 | `zoomTo(level, anchor?)` / `zoomBy(factor, anchor?)` / `zoomIn(anchor?)` / `zoomOut(anchor?)` | Zoom controls. |
