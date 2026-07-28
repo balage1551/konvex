@@ -8,7 +8,7 @@ import {
 import type { KonvexNode } from './KonvexNode'
 import { nodeAttr, numberAttr } from './WrapperTools'
 import type { KonvexLayer } from './KonvexLayer'
-import type { AttrSource, NumberParameter } from './KonvexTypes'
+import type { AttrSource, KonvexContent, NumberParameter } from './KonvexTypes'
 
 /** Custom clip region drawn into the scene context. */
 export type GroupClipFunc = (ctx: Konva.Context) => void
@@ -27,7 +27,7 @@ export interface KonvexGroupConfig extends KonvexContainerConfig {
  * full transform/visibility attribute set, so a whole group moves, rotates and
  * fades as one.
  */
-export class KonvexGroup extends KonvexContainer<Konva.Group, KonvexNode<Konva.Node>> {
+export class KonvexGroup extends KonvexContainer<Konva.Group, KonvexContent> {
   /** Whole clip rect; individual edges are also exposed below. */
   readonly clip: Ref<IRect | undefined, AttrSource<IRect | undefined>>
   readonly clipX: Ref<number, AttrSource<NumberParameter>>

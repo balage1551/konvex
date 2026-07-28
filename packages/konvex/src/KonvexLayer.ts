@@ -5,6 +5,7 @@ import {
 } from './KonvexContainer'
 import type { KonvexNode } from './KonvexNode'
 import type { KonvexStage } from './KonvexStage'
+import type { KonvexContent } from './KonvexTypes'
 
 export type KonvexLayerConfig = KonvexContainerConfig
 
@@ -12,7 +13,7 @@ export type KonvexLayerConfig = KonvexContainerConfig
  * Wraps a `Konva.Layer`. Holds shapes (and, later, groups) — anything that is
  * a {@link KonvexNode}.
  */
-export class KonvexLayer extends KonvexContainer<Konva.Layer, KonvexNode<Konva.Node>> {
+export class KonvexLayer extends KonvexContainer<Konva.Layer, KonvexContent> {
   constructor(config: KonvexLayerConfig = {}) {
     super(new Konva.Layer(), config)
   }

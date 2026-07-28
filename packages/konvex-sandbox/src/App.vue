@@ -765,7 +765,7 @@ import { KonvexImage } from '@balage1551/konvex'
 import { KonvexSprite } from '@balage1551/konvex'
 import { KonvexGroup } from '@balage1551/konvex'
 import { KonvexShape } from '@balage1551/konvex'
-import type { AnyNode, Fill, Stroke } from '@balage1551/konvex'
+import type { Fill, KonvexContent, Stroke } from '@balage1551/konvex'
 import {
   EditableLine,
   EditableLineToolbar,
@@ -811,7 +811,7 @@ function cycle<E extends string>(list: readonly E[], current: string | undefined
 let world: KonvexLayer | undefined // the stage's transformed content layer
 let outline: KonvexRect | undefined
 
-const selected = shallowRef<AnyNode>()
+const selected = shallowRef<KonvexContent>()
 const count = ref(0)
 
 // Editable lines show their handles only while host-selected (handles.show: whenSelected).
@@ -870,7 +870,7 @@ const patternImage = new Image()
 patternImage.src = '/puffins.jpg'
 
 // --- selection -----------------------------------------------------------
-function select(shape: AnyNode | undefined): void {
+function select(shape: KonvexContent | undefined): void {
   selected.value = shape
   updateProjection()
 }
@@ -943,7 +943,7 @@ function randPos(): { x: number; y: number } {
   return { x: 90 + Math.random() * 560, y: 90 + Math.random() * 260 }
 }
 
-function register(shape: AnyNode): void {
+function register(shape: KonvexContent): void {
   shape.draggable.value = true
   shape.onClick(() => select(shape))
   shape.onDragStart(() => select(shape))
@@ -1211,7 +1211,7 @@ const gcoText = computed(() => selected.value?.globalCompositeOperation.value ||
 // and clipped modes the stage installs its own for the duration of a drag, so the
 // ref reads non-empty mid-drag on a node the user never locked.
 // Swapped rather than mutated: a deep `ref` would try to unwrap the nodes inside.
-const dragLocked = shallowRef<ReadonlySet<AnyNode>>(new Set())
+const dragLocked = shallowRef<ReadonlySet<KonvexContent>>(new Set())
 const dragLockOn = computed(() => !!selected.value && dragLocked.value.has(selected.value))
 
 function toggleDragLock(): void {

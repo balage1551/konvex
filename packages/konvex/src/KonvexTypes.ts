@@ -4,6 +4,7 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import type { LineCap, LineJoin } from 'konva/lib/Shape'
 import type { KonvexBase } from './KonvexBase'
 import type { KonvexNode } from './KonvexNode'
+import type { KonvexGroup } from './KonvexGroup'
 import type { KonvexShape } from './KonvexShape'
 
 /**
@@ -237,6 +238,17 @@ export type FillInput = Fill | string
 export type AnyNode = KonvexNode<Konva.Node>
 /** Any konvex leaf shape (anything with paint). */
 export type AnyShape = KonvexShape<Konva.Shape>
+
+/**
+ * What a layer or a group may hold: shapes and groups.
+ *
+ * Konva enforces exactly this at runtime — `Layer._validateAdd` and
+ * `Group._validateAdd` both throw "You may only add groups and shapes" — and the
+ * stage takes only layers. Naming the rule in the type keeps
+ * `group.add(someLayer)` from compiling into a runtime throw, which is what a
+ * bound of {@link AnyNode} allowed: every container is also a node.
+ */
+export type KonvexContent = AnyShape | KonvexGroup
 
 /**
  * Konva interaction events mapped to their native DOM event type. Drives the
