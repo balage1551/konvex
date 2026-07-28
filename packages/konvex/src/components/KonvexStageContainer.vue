@@ -399,6 +399,7 @@ function fitTargetZoom(kind: FitKind): number {
 function doFit(kind: FitKind): void {
   const el = scrollEl.value
   if (!el) return
+  const previous = zoom.value
   let last = Number.NaN
   for (let i = 0; i < 4; i++) {
     const z = clampZoom(fitTargetZoom(kind))
@@ -410,8 +411,13 @@ function doFit(kind: FitKind): void {
     if (converged) break
     last = z
   }
-  emit('update:zoomLevel', zoom.value)
-  emit('zoom', zoom.value)
+  // Same rule as `commitZoom`, which this path bypasses: report a level that
+  // moved, and stay quiet when a fit lands on the level we already had. The
+  // scroll reset is reported either way — it happened.
+  if (zoom.value !== previous) {
+    emit('update:zoomLevel', zoom.value)
+    emit('zoom', zoom.value)
+  }
   emit('scroll', { x: 0, y: 0 })
 }
 function zoomToFit(): void {
@@ -602,7 +608,15 @@ onBeforeUnmount(() => {
 watch(
   () => props.zoomLevel,
   v => {
-    if (v !== undefined && v !== zoom.value) commitZoom(snapZoom(v))
+    if (v === undefined) return
+    if (v !== zoom.value) commitZoom(snapZoom(v))
+    // What the host asked for may clamp or snap to the level we were already on,
+    // and then `commitZoom` says nothing — correctly, since nothing zoomed. But
+    // the *model* now disagrees with the canvas, and reconciling that is the
+    // `v-model` half of the contract: a host that sets 100 with `maxZoom: 8` must
+    // end up holding 8. (Writing it back re-enters here as a no-op, so no
+    // ping-pong.)
+    if (props.zoomLevel !== zoom.value) emit('update:zoomLevel', zoom.value)
   },
 )
 watch(

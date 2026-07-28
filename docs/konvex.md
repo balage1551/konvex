@@ -381,7 +381,7 @@ applies; the world constraint composes with it rather than replacing it.
 | `ready` | `KonvexStage` — fired once the stage is mounted. |
 | `zoom` | `number` — new zoom level. Only fires when the level actually changes, so a plain resize is silent. |
 | `scroll` | `Vector2d` — new scroll position. |
-| `update:zoomLevel` | `number` — for `v-model:zoomLevel`. Not echoed when the level did not change. |
+| `update:zoomLevel` | `number` — for `v-model:zoomLevel`. Not echoed for a level that did not change, *except* to reconcile the model: a bound value that clamps or snaps to the current level is corrected, so `v-model` always ends up holding what the canvas is actually at. |
 | `world-resize` | `{ x, y, width, height }` — the world rect changed. Only `free`/`elastic` can fire it (their world follows the content); silent until after `ready`, since the first pass is the initial layout, not a change. |
 | `pointer` | `Vector2d \| null` — the pointer in **world** units on every move, `null` when it leaves. Read off the world layer, so zoom, scroll and the origin are already applied; fires over empty canvas too. |
 
