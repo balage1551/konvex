@@ -326,6 +326,31 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
   }
 
   /**
+   * The pointer (cursor / active touch) in **stage** coordinates — canvas
+   * pixels, before any world transform — or `null` when the node is not on a
+   * stage or no pointer has been seen yet.
+   *
+   * A copy, not Konva's live pointer object, so writing to it is harmless.
+   */
+  pointerPosition(): Vector2d | null {
+    const p = this._node.getStage()?.getPointerPosition()
+    return p ? { x: p.x, y: p.y } : null
+  }
+
+  /**
+   * The pointer in **this node's own** coordinate space, `null` under the same
+   * conditions as {@link pointerPosition}.
+   *
+   * This is the one to use inside a handler: read it on the node whose geometry
+   * you are about to compare against, and zoom, scroll, group transforms and
+   * the world origin are all already accounted for. On the stage's world layer
+   * it is the world coordinate.
+   */
+  relativePointerPosition(): Vector2d | null {
+    return this._node.getRelativePointerPosition()
+  }
+
+  /**
    * Register a typed Konva event handler. Event names are restricted to the
    * known {@link KonvexEventName}s and the handler's `event.evt` is typed for
    * them. Returns an `off` function; the handler is also removed automatically

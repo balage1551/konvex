@@ -11,9 +11,11 @@ import {
   type WritableComputedRef,
 } from 'vue'
 import type Konva from 'konva'
+import { konvexOf } from './KonvexRegistry'
 import type {
   AttrSource,
   ChangeMode,
+  KonvexEventObject,
   NumberConstraint,
   NumberParameter,
   Vector2d,
@@ -387,6 +389,38 @@ export interface KonvaEventOptions {
 }
 
 /**
+ * Add `konvexTarget`/`konvexCurrentTarget` to a Konva event object, as getters
+ * that resolve the wrapper on access — so they stay right as Konva reassigns
+ * `target` while an event bubbles, and cost nothing when unread.
+ *
+ * **Non-enumerable on purpose.** Konva clones event objects with `{ ...event }`
+ * on the enter/leave/over/out paths (`Stage.js`); an enumerable getter would be
+ * *invoked* by the spread and the clone would carry a frozen value resolved
+ * against the wrong target. Non-enumerable, the clone simply arrives without
+ * them and gets its own pair here.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withKonvexTargets(event: Konva.KonvaEventObject<any>): void {
+  if ('konvexTarget' in event) return
+  Object.defineProperties(event, {
+    konvexTarget: {
+      get(this: Konva.KonvaEventObject<unknown>) {
+        return konvexOf(this.target)
+      },
+      configurable: true,
+      enumerable: false,
+    },
+    konvexCurrentTarget: {
+      get(this: Konva.KonvaEventObject<unknown>) {
+        return konvexOf(this.currentTarget)
+      },
+      configurable: true,
+      enumerable: false,
+    },
+  })
+}
+
+/**
  * Register one or more Konva event listeners that are automatically removed
  * when `scope` is disposed (i.e. when the owning wrapper is destroyed). Returns
  * an `off` function for manual removal. Each registration gets a unique
@@ -400,8 +434,10 @@ export function bindKonvaEvent(
   node: Konva.Node,
   scope: EffectScope,
   eventNames: string | readonly string[],
+  // The handler is called with the konvex fields already in place — see
+  // `withKonvexTargets`, which runs before every delivery.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: (event: Konva.KonvaEventObject<any>) => void,
+  handler: (event: KonvexEventObject<any>) => void,
   options: KonvaEventOptions = {},
 ): () => void {
   const namespace = `.kx2evt${++eventSeq}`
@@ -409,15 +445,13 @@ export function bindKonvaEvent(
     .map(name => `${name}${namespace}`)
     .join(' ')
   const off = () => node.off(names)
-  node.on(
-    names,
-    options.once
-      ? event => {
-          off()
-          handler(event)
-        }
-      : handler,
-  )
+  node.on(names, event => {
+    withKonvexTargets(event)
+    if (options.once) off()
+    // The cast states what `withKonvexTargets` just did — the fields are there.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler(event as KonvexEventObject<any>)
+  })
   scope.run(() => onScopeDispose(off))
   return off
 }

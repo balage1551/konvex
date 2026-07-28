@@ -144,7 +144,10 @@ rect.bindTo(stage, 'mousemove', track)              // another node, this node's
 ```
 
 Handlers are removed automatically when the node is `destroy()`ed. `event.target`
-is a raw Konva node — `konvexOf(event.target)` gives you the konvex object back.
+is a raw Konva node; `event.konvexTarget` is the konvex object behind it (or
+`konvexOf(node)` for a node you got some other way). For coordinates, ask the node
+you are about to compare against: `node.relativePointerPosition()` is the pointer
+in *its* space, zoom and scroll included.
 
 See [Events](./konvex.md#events) for the full list of event names and the three
 things konvex models reactively instead (attribute changes, the child list, and

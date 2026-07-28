@@ -138,17 +138,38 @@ node.bindTo(stage, 'mousemove', track)                          // another node,
 - **Convenience handlers** mirror the map 1:1 (`onClick`, `onPointerClick`,
   `onTransformEnd`, …) for when you'd rather not spell the name as a string.
 
-`event.target` is a **Konva** node, as Konva made it. Use `konvexOf(node)` to get
-the konvex object back — `undefined` for a node konvex never wrapped, or one
-whose wrapper is destroyed:
+#### Getting back to konvex from an event
+
+`event.target` / `event.currentTarget` stay **Konva** nodes, exactly as Konva set
+them. Alongside them konvex adds `konvexTarget` / `konvexCurrentTarget`, which
+resolve those nodes to their wrappers on access — `undefined` for a node konvex
+never wrapped (a `Konva.Transformer`'s anchors, say) or one whose wrapper is
+destroyed:
 
 ```ts
 stage.onClick(e => {
-  const hit = konvexOf(e.target)
-  if (hit === stage) return   // the empty canvas
-  select(hit)
+  if (e.konvexTarget === stage) return   // the empty canvas
+  select(e.konvexTarget)
 })
 ```
+
+`konvexOf(node)` does the same lookup for a node you have some other way. Both
+read the same `WeakMap`, filled when a wrapper is constructed and emptied on its
+`destroy()`.
+
+#### The pointer
+
+Two methods on every node, both `null` when the node is not on a stage or no
+pointer has been seen:
+
+| Method | Space |
+| --- | --- |
+| `pointerPosition()` | stage/canvas pixels, before any world transform (a copy, safe to mutate) |
+| `relativePointerPosition()` | **this node's own** space — zoom, scroll, group transforms and the world origin already applied |
+
+Read the relative one on the node whose geometry you are comparing against, and
+there is no transform maths to do. On the stage container's world layer it is the
+world coordinate — which is what `pointerWorld()` on the component returns.
 
 Three things deliberately are *not* events:
 
@@ -206,6 +227,7 @@ reads the nearest ancestor's unless pinned by writing to it; see
 
 **Methods:**
 - `konvaRoot(): T` / `detach(): T` — the underlying Konva node (escape hatch).
+- `pointerPosition(): Vector2d | null` / `relativePointerPosition(): Vector2d | null` — the pointer in stage space / in this node's own space. See [Events](#events).
 - `on(name | names, handler, { once? }): () => void` — typed Konva event(s); returns an `off`. See [Events](#events).
 - `once(name | names, handler): () => void` — removed after the first delivery.
 - `bindTo(target, name | names, handler, { once? }): () => void` — the same, on another node, with this object's lifetime (inherited from `KonvexBase`).
@@ -499,6 +521,7 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
 | `DragBoundFunc` | `(pos: Vector2d) => Vector2d` |
 | `KonvexEventMap` | every event Konva dispatches on a node (37: mouse, touch, pointer, wheel, drag, transform), mapped to its DOM event type — see [Events](#events) |
 | `KonvaEventOptions` | `{ once?: boolean }` — the third argument of `on`/`bindTo` |
+| `KonvexEventObject<E>` | Konva's event object plus `konvexTarget` / `konvexCurrentTarget` |
 
 ### Fill variants
 

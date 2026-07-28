@@ -637,8 +637,7 @@ export class EditableLine extends KonvexGroup {
   // --- assist ----------------------------------------------------------------
 
   private localPointer(): Vector2d | null {
-    const p = this.konvaRoot().getRelativePointerPosition()
-    return p ? { x: p.x, y: p.y } : null
+    return this.relativePointerPosition()
   }
 
   /** Drop every listener this line put on the stage. Idempotent. */
@@ -691,8 +690,9 @@ export class EditableLine extends KonvexGroup {
     // Ctrl, exactly like a left-click — for a quick right-click-to-act gesture.
     this._stageOffs.push(this.bindTo(stage, 'contextmenu', e => {
       if (!this.active.value) return
-      const handleIdx = this._handles.findIndex(h => h.konvaRoot() === e.target)
-      const onLine = e.target === this.line.konvaRoot()
+      const hit = e.konvexTarget
+      const handleIdx = this._handles.findIndex(h => h === hit)
+      const onLine = hit === this.line
       if (handleIdx < 0 && !onLine) return
       const me = e.evt
       me.preventDefault()

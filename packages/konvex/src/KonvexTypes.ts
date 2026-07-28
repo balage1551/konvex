@@ -312,7 +312,22 @@ export interface KonvexEventMap {
 /** A bindable konvex event name. */
 export type KonvexEventName = keyof KonvexEventMap
 
+/**
+ * Konva's event object with the konvex objects behind it.
+ *
+ * `target`/`currentTarget` stay exactly what Konva put there — raw nodes — so
+ * anything written against Konva still reads the same. The two `konvex*` fields
+ * resolve those nodes through the wrapper registry on access, and are
+ * `undefined` for a node konvex never wrapped (a `Konva.Transformer`'s anchors,
+ * say) or one whose wrapper is destroyed. Equivalent to calling
+ * {@link konvexOf} yourself.
+ */
+export type KonvexEventObject<E> = KonvaEventObject<E> & {
+  readonly konvexTarget: AnyNode | undefined
+  readonly konvexCurrentTarget: AnyNode | undefined
+}
+
 /** A handler for event `K`, with a correctly-typed `event.evt`. */
 export type KonvexEventHandler<K extends KonvexEventName> = (
-  event: KonvaEventObject<KonvexEventMap[K]>,
+  event: KonvexEventObject<KonvexEventMap[K]>,
 ) => void
