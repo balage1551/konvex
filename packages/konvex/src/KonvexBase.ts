@@ -76,6 +76,8 @@ export abstract class KonvexBase {
    * `target` may be a konvex object or a raw Konva node, so this also covers
    * nodes konvex does not wrap. Several event names bind as one unit; the
    * returned `off` removes them all, as does `once` on first delivery.
+   *
+   * Called *after* `destroy()` it binds nothing and warns — see {@link bindDom}.
    */
   bindTo<K extends KonvexEventName>(
     target: Konva.Node | KonvexBase,
@@ -98,6 +100,12 @@ export abstract class KonvexBase {
    * same bookkeeping that leaked stage listeners before {@link bindTo} existed.
    *
    * Returns an `off`; the listener is also removed when this object is destroyed.
+   *
+   * Called *after* `destroy()` it binds nothing, warns, and returns a no-op `off`.
+   * Attaching would be worse than refusing: the scope is already stopped, so
+   * nothing would ever remove the listener, and `window` never goes away — the
+   * handler's closure would pin this object for the lifetime of the page.
+   * {@link bindTo} refuses the same way.
    */
   bindDom<K extends keyof WindowEventMap>(
     target: Window | Document | HTMLElement,
@@ -105,6 +113,10 @@ export abstract class KonvexBase {
     handler: (event: WindowEventMap[K]) => void,
     options?: boolean | AddEventListenerOptions,
   ): () => void {
+    if (!this.scope.active) {
+      console.warn(`[konvex] ignored a '${type}' DOM listener bound after destroy() — nothing would remove it`)
+      return () => {}
+    }
     const listener = handler as EventListener
     target.addEventListener(type, listener, options)
     const off = () => target.removeEventListener(type, listener, options)

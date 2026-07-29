@@ -435,6 +435,9 @@ function withKonvexTargets(event: Konva.KonvaEventObject<any>): void {
  *
  * Several names bind as one unit: one namespace, one `off`, and with
  * `once` the first delivery of *any* of them removes them all.
+ *
+ * On an already-stopped scope it binds nothing and returns a no-op `off`, since
+ * the automatic removal is the whole contract.
  */
 export function bindKonvaEvent(
   node: Konva.Node,
@@ -446,10 +449,18 @@ export function bindKonvaEvent(
   handler: (event: KonvexEventObject<any>) => void,
   options: KonvaEventOptions = {},
 ): () => void {
+  const list = typeof eventNames === 'string' ? [eventNames] : eventNames
+  if (!scope.active) {
+    // Fail closed. `scope.run` silently skips its callback on a dead scope, so
+    // binding here would attach a listener with nothing left to remove it — on a
+    // `target` that outlives the wrapper, exactly the leak this helper exists to
+    // prevent. Vue's own "inactive effect scope" warning is dev-only and does not
+    // say what leaked, so say it here instead.
+    console.warn(`[konvex] ignored '${list.join(' ')}' bound after destroy() — nothing would remove it`)
+    return () => {}
+  }
   const namespace = `.kx2evt${++eventSeq}`
-  const names = (typeof eventNames === 'string' ? [eventNames] : eventNames)
-    .map(name => `${name}${namespace}`)
-    .join(' ')
+  const names = list.map(name => `${name}${namespace}`).join(' ')
   const off = () => node.off(names)
   node.on(names, event => {
     withKonvexTargets(event)

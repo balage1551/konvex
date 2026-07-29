@@ -131,6 +131,11 @@ node.bindTo(stage, 'mousemove', track)                          // another node,
   `destroy()` drops it; the returned `off` is for removing one early. Each
   registration gets its own Konva namespace, so binding the same event twice and
   removing one leaves the other alone.
+- **Binding after `destroy()` is refused.** A stopped scope has no removal left to
+  give, and a listener that never goes away is a leak rather than a favour — so
+  the binder attaches nothing, warns with the event name it turned down, and hands
+  back a no-op `off`. Only this path changed in 1.3.1; binding on a live object is
+  exactly as before.
 - **Arrays bind as a unit.** One namespace, one `off`, and `once` removes all of
   them on the first delivery of any.
 - **`bindTo(target, …)`** listens on *another* node — a stage, a sibling — with
@@ -182,6 +187,12 @@ focus, so modifier state and shortcuts have to come from `window`:
 ```ts
 widget.bindDom(window, 'keydown', e => (alt.value = e.altKey))
 ```
+
+The lifetime rule is load-bearing here in a way it is not for a Konva target: a
+listener left on a node dies with that node's subtree, but `window` never goes
+away, so one attached after `destroy()` would hold the handler — and through its
+closure the wrapper and its whole Konva node — for the lifetime of the page. That
+is why the binders refuse rather than attach once the scope has stopped.
 
 #### konvex signals
 
