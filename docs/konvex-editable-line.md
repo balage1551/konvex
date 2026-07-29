@@ -87,7 +87,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `selectable` | `boolean` | `true` | Line-wide default selectability. |
 | `pointOptions` | `(PointOptions \| undefined)[]` | — | Per-index overrides; `undefined` inherits. |
 | `handles` | `HandleConfig` | — | `show` (`'always'\|'whenSelected'\|'never'`), `size`, `radius`, `style(state)`. |
-| `assist` | `AssistConfig` | — | `show` (`'always'\|'onAlt'\|'never'`), `scope`, `snapThreshold`. `scope`/`snapThreshold` seed the live `projectionScope`/`snapThreshold` refs and govern insertion, not just the preview. |
+| `assist` | `AssistConfig` | — | `show` (`'always'\|'onAlt'\|'never'`), `scope`, `snapThreshold`. `scope`/`snapThreshold` seed the live `projectionScope`/`snapThreshold` refs and govern insertion, not just the preview. `scope: 'nowhere'` makes the line **non-extendable but still editable** — see below. |
 | `dragConstraintLine` | `DragConstraintLineConfig` | — | Axis guide styling (`show`, `color`, `width`, `radius`). |
 | `rubberBand` | `RubberBandConfig` | — | `enabled` (default `true`), `fill`, `stroke`. |
 | `simplification` | `SimplificationThreshold` | `{ angle:5, distance:10 }` | Thresholds for `simplify()`. |
@@ -106,7 +106,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `pointInfos` | `ComputedRef<PointInfo[]>` | One row per point (index, x, y, effective options, selected). |
 | `handlesShow` | `Ref<HandleShow>` | Live handle visibility mode. |
 | `assistShow` | `Ref<AssistShow>` | Live assist visibility mode. |
-| `projectionScope` | `Ref<LineProjectionScope>` | Live **set** of the parts a new point may land on — any subset of `'start'` / `'internal'` / `'end'`, defaulting to all three. Holds the resolved set: seed it by name via `assist.scope`, assign a set (or a `LINE_PROJECTION_SCOPES` entry) at runtime. Every add gesture and the assist preview read this one value, so they cannot disagree. |
+| `projectionScope` | `Ref<LineProjectionScope>` | Live **set** of the parts a new point may land on — any subset of `'start'` / `'internal'` / `'end'`, defaulting to all three. Holds the resolved set: seed it by name via `assist.scope`, assign a set (or a `LINE_PROJECTION_SCOPES` entry) at runtime. Every add gesture and the assist preview read this one value, so they cannot disagree. **Normalises on write** (see [`lineProjectionParts`](./konvex.md#konvexline)): parts de-duplicated and ordered, an unusable value read as `'anywhere'`, and only an explicit `[]` / `'nowhere'` left empty. |
 | `snapThreshold` | `Ref<number>` | Live: distance within which an inserted point snaps onto the line. Seeded from `assist.snapThreshold`. |
 | `scalableComponents` | `Ref<ScalableComponents>` | Live zoom-scaling set. |
 | `defaultMovable` | `Ref<PointMovement>` | Live line-wide movement default. |
@@ -182,6 +182,27 @@ may land. Its glyph shows the current set, so it doubles as the indicator, and i
 keeps the bar open so you can step round to the one you want. A hand-rolled subset
 (`internal` + one end) has no glyph of its own: it shows the permissive one and
 names the parts in the tooltip, and cycling from it restarts at `anywhere`.
+
+`'nowhere'` is deliberately **not** a step in that cycle: it is an authoring choice,
+and landing on it by one stray click would leave a line whose add gestures silently
+do nothing. It still renders with a face of its own (a cancel glyph, "Add points:
+nowhere") when a host sets it, and cycling from it restarts at `anywhere` — so the
+toolbar can always get back out.
+
+### Non-extendable but editable lines
+
+`assist: { scope: 'nowhere' }` (or `line.projectionScope.value = []` at runtime)
+fixes a line's point *count* while leaving everything else editable: points still
+drag, select, align, straighten, simplify and delete. It works one level below the
+gesture flags — `project` itself refuses — so the assist has nothing to preview,
+`breakOnDblClick` is inert (splitting needs `'internal'`), and Alt+click and
+stage-double-click add nothing. Switching `addOnDblClick`/`addOnAltClick` off
+instead only closes the two gestures you named, and leaves the assist previewing
+insertions that can no longer happen.
+
+The imperative API is **not** gated by it: `addPoint`, `insertPoint`, `movePoint`
+and friends do what they are told. The scope governs pointer gestures and
+projection, not what the host asks for directly.
 
 Divider tokens: `'|'` or `'separator'`. `DEFAULT_TOOLBAR_ITEMS` is the six
 aligns + `straighten`/`simplify` + `delete`. `BUILTIN_TOOLBAR_ITEMS` is the

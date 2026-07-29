@@ -1,4 +1,4 @@
-import { computed, type ComputedRef, ref, type Ref, watch } from 'vue'
+import { computed, type ComputedRef, customRef, ref, type Ref, watch } from 'vue'
 import type Konva from 'konva'
 import { KonvexGroup } from '@balage1551/konvex'
 import { KonvexLine, type LineProjection } from '@balage1551/konvex'
@@ -6,7 +6,7 @@ import { type SimplificationThreshold, simplifyPoints, straightenPoints } from '
 import { KonvexCircle } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
 import { LINE_PROJECTION_SCOPES, lineProjectionParts } from '@balage1551/konvex'
-import type { LineProjectionScope, Vector2d } from '@balage1551/konvex'
+import type { LineProjectionScope, LineProjectionScopeInput, Vector2d } from '@balage1551/konvex'
 import {
   type AssistShow,
   defaultHandleStyle,
@@ -63,6 +63,12 @@ export class EditableLine extends KonvexGroup {
    * Holds the resolved set: seed it from a name via `assist.scope`, and assign a
    * set (or a `LINE_PROJECTION_SCOPES` entry) to change it at runtime. Governs
    * where an added point actually lands; the assist previews the same decision.
+   *
+   * **Normalising on write.** Every assignment goes through `lineProjectionParts`,
+   * so what comes back out is always a usable set: parts de-duplicated and in
+   * canonical order, an unrecognised value read as `'anywhere'`, and only an
+   * explicit `[]` / `'nowhere'` left empty. `'nowhere'` keeps the line editable —
+   * points still move, select and align — while refusing every *new* point.
    */
   readonly projectionScope: Ref<LineProjectionScope>
   /** Distance (world units) within which an inserted point snaps onto the line. */
@@ -127,7 +133,29 @@ export class EditableLine extends KonvexGroup {
 
     this.handlesShow = ref(config.handles?.show ?? 'whenSelected')
     this.assistShow = ref(config.assist?.show ?? 'never')
-    this.projectionScope = ref(lineProjectionParts(config.assist?.scope ?? 'anywhere'))
+    // A plain `ref` would let a host assign anything — including `[]` by accident,
+    // or `undefined` from an unset config field — and an empty scope silently
+    // disables every add gesture. `customRef` puts the normalisation on the write,
+    // so the invariant ("never accidentally empty") holds for reads everywhere
+    // rather than being re-checked at each of them.
+    this.projectionScope = customRef<LineProjectionScope>((track, trigger) => {
+      let parts = lineProjectionParts(config.assist?.scope)
+      return {
+        get() {
+          track()
+          return parts
+        },
+        set(value) {
+          const next = lineProjectionParts(value as LineProjectionScopeInput)
+          // Same members, same scope — don't wake the assist and handle watchers
+          // for a re-assignment that changes nothing (the toolbar re-assigns the
+          // same constant whenever the cycle comes round).
+          if (next.length === parts.length && next.every(p => parts.includes(p))) return
+          parts = next
+          trigger()
+        },
+      }
+    })
     this.snapThreshold = ref(config.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
     this.scalableComponents = ref(config.scalableComponents ?? ['line'])
     this.defaultMovable = ref(config.movable ?? 'free')
@@ -759,13 +787,7 @@ export class EditableLine extends KonvexGroup {
       if (e.target !== stage && e.target !== this.line.konvaRoot()) return
       const p = this.localPointer()
       if (!p) return
-      const proj = this.line.project(p, this.projectionScope.value)
-      if (!proj) {
-        this.addPoint(p)
-        return
-      }
-      const { index, point } = this.resolveInsertion(p, proj)
-      this.insertPoint(index, point)
+      this.addAtProjection(p)
     }))
     this._stageOffs.push(this.bindTo(stage, 'dblclick', e => {
       if (!this.addOnDblClick.value || !this.active.value) return
@@ -776,10 +798,7 @@ export class EditableLine extends KonvexGroup {
       // Same resolution as the Alt+click commit and the assist preview — this
       // path used to reimplement it and fell through to a blind append whenever
       // the cursor was beyond the snap threshold, ignoring the scope entirely.
-      const proj = this.line.project(p, this.projectionScope.value)
-      if (!proj) return void this.addPoint(p)
-      const { index, point } = this.resolveInsertion(p, proj)
-      this.insertPoint(index, point)
+      this.addAtProjection(p)
     }))
     // Right-click on a handle or on the line asks for the toolbar. An already-
     // selected handle keeps the current (multi-)selection so the toolbar acts on
@@ -893,6 +912,33 @@ export class EditableLine extends KonvexGroup {
     const proj = this.line.project(cursor, this.projectionScope.value)
     if (!proj) return this.hideAssist()
     this.showAssist(cursor, proj)
+  }
+
+  /**
+   * Commit a click at `p` as a new point, or refuse — the whole of what an add
+   * gesture does once it has decided the click was for this line.
+   *
+   * `project` answers `undefined` for two opposite reasons, and treating them alike
+   * is what let `'nowhere'` be bypassed: a **short line** (0 or 1 points) has
+   * nothing to project onto *yet*, and an append is the only way to seed it, while
+   * an **empty scope** has said points go nowhere at all. The old code went
+   * straight to `addPoint` for both, so the one scope that forbids adding was the
+   * one scope that appended unconditionally — and the assist showed nothing
+   * beforehand, so the point arrived with no warning.
+   *
+   * The scope is checked first, so it also governs the seeding case: a line
+   * configured `'nowhere'` from the start never gets a first point by clicking.
+   */
+  private addAtProjection(p: Vector2d): void {
+    const scope = this.projectionScope.value
+    if (scope.length === 0) return
+    const proj = this.line.project(p, scope)
+    if (!proj) {
+      this.addPoint(p)
+      return
+    }
+    const { index, point } = this.resolveInsertion(p, proj)
+    this.insertPoint(index, point)
   }
 
   /**

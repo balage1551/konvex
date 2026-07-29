@@ -119,6 +119,11 @@ const toggleClosedItem: EditableLineToolbarItem = {
  * Where a newly added point may land, as a cycle. The glyph shows the current
  * scope, so the item doubles as the indicator; the bar stays open so the user
  * can step round to the one they want in place.
+ *
+ * `'nowhere'` is deliberately **not** a step. It is an authoring choice for a line
+ * that takes no new points, and landing on it by one stray click would leave a line
+ * whose add gestures silently do nothing. A line already set to it still cycles
+ * *out* — an unrecognised set restarts at `anywhere`, which covers the empty set too.
  */
 const SCOPE_CYCLE: readonly LineProjectionScopeName[] = [
   'anywhere',
@@ -137,6 +142,11 @@ const SCOPE_FACE: Record<string, { icon: string; title: string }> = {
   'end,start': { icon: 'mdi-ray-start-end', title: 'Add points: at either end' },
   start: { icon: 'mdi-ray-start', title: 'Add points: before the start' },
   end: { icon: 'mdi-ray-end', title: 'Add points: after the end' },
+  // `nowhere` is not in the cycle, but a host can set it, and it needs a face of
+  // its own: the generic fallback below is the *permissive* ray glyph, which would
+  // read as "anywhere" on the one scope that adds nothing. Keyed by `''` because
+  // that is what `scopeKey([])` produces.
+  '': { icon: 'mdi-cancel', title: 'Add points: nowhere' },
 }
 /**
  * The five named sets get a distinct glyph. A hand-rolled subset (`internal` +

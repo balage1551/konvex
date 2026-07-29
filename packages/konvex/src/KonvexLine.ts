@@ -16,7 +16,8 @@ export type LineProjectionPart = 'start' | 'internal' | 'end'
 /**
  * Where {@link KonvexLine.project} may land: any subset of the three parts.
  * `['start', 'internal', 'end']` allows a point anywhere; `['internal']`
- * restricts to the body; `[]` allows nothing and projects to `undefined`.
+ * restricts to the body; `[]` — spelled `'nowhere'` — allows nothing and projects
+ * to `undefined`.
  */
 export type LineProjectionScope = readonly LineProjectionPart[]
 
@@ -33,6 +34,13 @@ export const LINE_PROJECTION_SCOPES = {
   terminal: ['start', 'end'],
   start: ['start'],
   end: ['end'],
+  /**
+   * Nothing: every projection is refused. For a line that stays editable — points
+   * move, select, align and delete — but takes no *new* points, which no subset of
+   * the parts could express. Distinct from switching the add gestures off, since it
+   * governs `project` itself, so the assist has nothing to preview either.
+   */
+  nowhere: [],
 } as const satisfies Record<string, LineProjectionScope>
 
 /** Name of a {@link LINE_PROJECTION_SCOPES} entry. */
@@ -41,9 +49,31 @@ export type LineProjectionScopeName = keyof typeof LINE_PROJECTION_SCOPES
 /** A scope, or the name of a predefined one — accepted wherever a scope is taken. */
 export type LineProjectionScopeInput = LineProjectionScope | LineProjectionScopeName
 
-/** Resolve a scope input to its set of parts. */
-export function lineProjectionParts(scope: LineProjectionScopeInput): LineProjectionScope {
-  return typeof scope === 'string' ? LINE_PROJECTION_SCOPES[scope] : scope
+/** Canonical part order, so a resolved scope is comparable by identity of content. */
+const ALL_PARTS: readonly LineProjectionPart[] = ['start', 'internal', 'end']
+
+/**
+ * Resolve a scope input to its set of parts, and **never** answer with an
+ * accidentally-empty one.
+ *
+ * Only an explicit `[]` / `'nowhere'` resolves to empty. Everything unusable —
+ * `undefined`, `null`, a non-array, an unknown name, or an array naming no real
+ * part — resolves to `'anywhere'`, because an empty scope silently disables every
+ * add gesture and the assist with it: the *most* restrictive outcome, and a
+ * terrible reading of "I could not understand this value". Recognised parts are
+ * de-duplicated and returned in {@link ALL_PARTS} order.
+ */
+export function lineProjectionParts(scope?: LineProjectionScopeInput | null): LineProjectionScope {
+  if (typeof scope === 'string') {
+    // The type says this is a known name; a JS caller can still pass anything.
+    return LINE_PROJECTION_SCOPES[scope] ?? LINE_PROJECTION_SCOPES.anywhere
+  }
+  if (!Array.isArray(scope)) return LINE_PROJECTION_SCOPES.anywhere
+  // Empty on purpose is the one legal way to say "nothing", so it survives.
+  if (scope.length === 0) return LINE_PROJECTION_SCOPES.nowhere
+  const parts = ALL_PARTS.filter(part => scope.includes(part))
+  // Non-empty but naming nothing real ( ['bogus'] ) is garbage, not `nowhere`.
+  return parts.length > 0 ? parts : LINE_PROJECTION_SCOPES.anywhere
 }
 
 /** Result of {@link KonvexLine.project}. */
@@ -175,8 +205,14 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
   /**
    * Closest point on the (flat) line to `point` (given in parent/world coords),
    * among the parts in `scope` — every part by default. Tension/bezier are
-   * ignored. Returns `undefined` for a line with fewer than two points, or when
-   * `scope` is empty (nothing is allowed, so nothing projects).
+   * ignored. The scope goes through {@link lineProjectionParts}, so an
+   * unrecognised value reads as `'anywhere'` rather than as "nothing".
+   *
+   * Returns `undefined` in two cases a caller usually has to tell apart: a line
+   * with **fewer than two points** (nothing to project onto *yet*), and a scope of
+   * `'nowhere'` (**nothing is allowed**, now or later). Falling back to "append the
+   * point" is right for the first and wrong for the second — check
+   * `lineProjectionParts(scope).length` to distinguish them.
    */
   project(
     point: Vector2d,

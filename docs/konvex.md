@@ -495,9 +495,32 @@ Methods:
   | `'internal'` | `['internal']` | body only |
   | `'terminal'` | `['start','end']` | either end, never the body |
   | `'start'` / `'end'` | `['start']` / `['end']` | that end only |
+  | `'nowhere'` | `[]` | nothing projects — every query returns `undefined` |
 
   `LINE_PROJECTION_SCOPES` holds them; `lineProjectionParts(scope)` resolves a
-  name or set to its parts. The empty set allows nothing and returns `undefined`.
+  name or set to its parts.
+
+  **`lineProjectionParts` never answers with an accidentally-empty set.** An empty
+  scope is the most restrictive one there is, so it has to be asked for, not
+  arrived at: only an explicit `[]` or `'nowhere'` resolves to empty. `undefined`,
+  `null`, a non-array, an unknown name, or an array naming no real part all resolve
+  to `'anywhere'`. Recognised parts are de-duplicated and returned in
+  `'start'`, `'internal'`, `'end'` order, so two spellings of the same set compare
+  equal.
+
+  ```ts
+  lineProjectionParts('nowhere')          // []            — asked for
+  lineProjectionParts([])                 // []            — the same value
+  lineProjectionParts(undefined)          // anywhere      — not understood
+  lineProjectionParts(['typo'])           // anywhere      — not understood
+  lineProjectionParts(['end','internal']) // ['internal','end']
+  ```
+
+  **Two reasons for `undefined`**, and callers usually need to tell them apart: a
+  line with fewer than two points has nothing to project onto *yet*, while
+  `'nowhere'` allows nothing at all. "Append the point instead" is right for the
+  first and wrong for the second — test `lineProjectionParts(scope).length` to
+  distinguish them.
 
   The scope alone bounds which `segment` values can come back. Segment projections
   are clamped, so a query past an end lands on the terminal vertex: with that end

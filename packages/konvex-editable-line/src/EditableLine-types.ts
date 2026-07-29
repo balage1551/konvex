@@ -56,7 +56,12 @@ export interface AssistConfig {
   show?: AssistShow
   /**
    * Where added points may land — any subset of `'start'` / `'internal'` / `'end'`,
-   * or the name of a predefined set. Defaults to `'anywhere'` (all three).
+   * or the name of a predefined set. Defaults to `'anywhere'` (all three); an
+   * unrecognised value reads as `'anywhere'` too, never as "nowhere".
+   *
+   * `'nowhere'` (or `[]`) fixes the line's point *count* while leaving it fully
+   * editable — points still drag, select and align. It works below the gesture
+   * flags, on `project` itself, so the assist previews nothing either.
    */
   scope?: LineProjectionScopeInput
   /** Snap the insertion point to the line when within this distance (world units, default `10`). */
