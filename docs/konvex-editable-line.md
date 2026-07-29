@@ -276,6 +276,16 @@ Three things worth knowing:
   konvex does not invent per-point events for it: treat any index-keyed state you
   hold as invalid and re-read. `simplify()` reports this way too — which points
   survived a reshape is not a sequence of removals.
+- **A host write is reported even when it shares a tick with a library edit.**
+  Vue watchers flush once per tick, so a host assigning `line.points` from inside a
+  `point-added` listener (snapping to a grid, clamping, validating) writes in the
+  same flush as the edit that triggered it. Both are reported: the precise
+  `point-*` event, then `points-replaced`. One caveat that cannot be fixed from
+  here — if the host's write *undoes* the library's edit, the per-point event has
+  already been emitted synchronously and cannot be retracted, so treat the trailing
+  `points-replaced` as the correction and re-read. An in-place mutation of the
+  array (`points.value.push(…)`) is reported by nothing at all, since it never
+  triggers the ref.
 - **A write that arrives mid-drag is deferred, not dropped.** A host writing
   `line.points` while a handle is being dragged (an undo, a collaborative patch)
   lands in the geometry immediately, but its handle resync and its

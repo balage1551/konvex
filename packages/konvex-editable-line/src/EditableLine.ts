@@ -122,8 +122,24 @@ export class EditableLine extends KonvexGroup {
   private readonly _altDown = ref(false)
   private readonly _optionsTick = ref(0)
   private _dragging = false
-  /** Set by {@link writePoints}; consumed by the wholesale-replace watch. */
-  private _selfWrite = false
+  /**
+   * The array {@link writePoints} last wrote and the watch has not yet seen, and
+   * the last array the watch *did* see. Together they tell a self-write from a
+   * foreign one **by identity**, which a boolean marker could not: watchers flush
+   * once per tick, so a single flag is consumed once no matter how many writes
+   * shared the flush, and a batch holding both kinds read as purely self-written.
+   *
+   * The `points` ref hands back the very array it was given, so identity is a
+   * sound test. Its one blind spot is a mutation made *in place*, which does not
+   * reach the watch at all — a boolean had the same hole.
+   */
+  private _written: number[] | undefined = undefined
+  private _reconciled: number[] | undefined = undefined
+  /**
+   * A foreign write was spotted by {@link writePoints} before it overwrote it, so
+   * the flush it shares reports one even though the final array is this class's own.
+   */
+  private _foreignPending = false
   /**
    * A *foreign* `points` replacement arrived mid-drag and its reaction was
    * deferred; the drag end owes it a handle resync and a `points-replaced`.
@@ -175,6 +191,10 @@ export class EditableLine extends KonvexGroup {
 
     const flat = (config.points ?? []).flatMap(p => [p.x, p.y])
     this.line = new KonvexLine({ ...config.line, points: flat })
+    // The starting geometry counts as already reconciled: without this, the first
+    // `writePoints` would compare against `undefined`, call the initial array a
+    // foreign write, and report a `points-replaced` nobody made.
+    this._reconciled = this.line.points.value
     this.add(this.line)
     this._options = (config.points ?? []).map((_, i) => config.pointOptions?.[i])
 
@@ -303,10 +323,17 @@ export class EditableLine extends KonvexGroup {
       watch(
         () => this.line.points.value,
         () => {
-          // Consume the marker first: whether or not the rest of this runs, the
-          // next write starts unmarked.
-          const own = this._selfWrite
-          this._selfWrite = false
+          // Settle the bookkeeping first, so the next write starts clean whatever
+          // the rest of this does. A write is foreign if the array we ended up with
+          // is not the one we wrote, or if `writePoints` already caught one before
+          // overwriting it — the second half is what makes a *mixed* flush report:
+          // a host that edits points from inside a `point-added` listener writes in
+          // this class's own flush, and used to be silently absorbed by it.
+          const current = this.line.points.value
+          const foreign = this._foreignPending || current !== this._written
+          this._foreignPending = false
+          this._written = undefined
+          this._reconciled = current
           // A handle drag writes points on every move; applyDragDelta has already
           // moved the handles it touched, and re-positioning mid-drag would fight
           // Konva's own drag positioning. A write from *outside* is a different
@@ -314,13 +341,13 @@ export class EditableLine extends KonvexGroup {
           // the drag end rather than dropping it, which used to leave the handles
           // permanently stale and the write unannounced.
           if (this._dragging) {
-            if (!own) this._deferredPointsWrite = true
+            if (foreign) this._deferredPointsWrite = true
             return
           }
           this.syncToPoints()
           // Only a write this class did not make gets here unreported: EL's own
           // editing methods emit their precise `point-*` event at the call site.
-          if (!own) this.events.emit('points-replaced', { count: this.pointCount })
+          if (foreign) this.events.emit('points-replaced', { count: this.pointCount })
         }
       )
       // Attach/detach stage listeners as the line enters/leaves a stage.
@@ -598,13 +625,27 @@ export class EditableLine extends KonvexGroup {
   /**
    * The one place EL writes geometry.
    *
-   * Marks the write as its own so the wholesale-replace watch can tell an edit
-   * that came through this class (which emits its own precise `point-*` event)
-   * from one a host made by assigning `line.points` (which can only be reported
-   * as `points-replaced`).
+   * Records the write so the wholesale-replace watch can tell an edit that came
+   * through this class (which emits its own precise `point-*` event) from one a
+   * host made by assigning `line.points` (which can only be reported as
+   * `points-replaced`).
+   *
+   * It also has to notice a foreign write it is about to *overwrite*. Watchers
+   * flush once per tick, so a host write and one of these can share a flush — a
+   * host normalising geometry from inside a `point-added` listener does it every
+   * time, since the emit is synchronous. Only this method is positioned to see
+   * that: by the time the watch runs, the array it would have compared against is
+   * already gone.
    */
   private writePoints(flat: number[]): void {
-    this._selfWrite = true
+    // Foreign means "neither what the watch last settled on, nor what this class
+    // last wrote". Both halves are needed: two edits in one flush (`addPoint`
+    // twice, or a drag frame after another) leave the *first* array in place when
+    // the second runs, and comparing against `_reconciled` alone would call our own
+    // previous write an intruder and report a `points-replaced` nobody made.
+    const current = this.line.points.value
+    if (current !== this._reconciled && current !== this._written) this._foreignPending = true
+    this._written = flat
     this.line.points.value = flat
   }
 
