@@ -1,5 +1,53 @@
 # @balage1551/konvex-editable-line
 
+## 1.4.0
+
+### Patch Changes
+
+- 3c3bf9b: Fix a host `points` write during a handle drag being dropped instead of deferred.
+
+  The watch that answers a wholesale `line.points` replacement bailed out whenever a drag was in progress — right for the line's _own_ per-frame drag writes, since `applyDragDelta` has already moved the handles it touched and repositioning them mid-drag would fight Konva's drag positioning, but wrong for a write from outside. A host writing `line.points` mid-drag (an undo, a collaborative patch, a socket update) got no handle resync and no `points-replaced`, and `dragend` had no catch-up, so neither ever arrived.
+
+  The write itself was never the casualty: it lands in the geometry immediately, and `applyDragDelta` copies the live array, so points the drag is not touching keep the new values. What went missing was the _reaction_ — and the interesting half of that is not the missing event.
+
+  **Stale handles corrupt geometry on the next drag.** `onDragMove` takes its delta as `handle.position - point.origin`, so a handle left behind disagrees with its point before the pointer moves at all. Grabbing that handle snaps its point back to the stale coordinate: measured on the pre-fix code, a line written to `y=9` mid-drag went back to `y=0` on a drag with _zero_ pointer movement, silently undoing the host's write on the canvas while the persister — never told anything had changed — kept the value it never heard about.
+
+  A foreign mid-drag write is now remembered and drained at `dragend`, after that drag's own `point-moved`, so the order a listener sees is the order things settled. A drag containing no foreign write stays silent, and a mid-drag write that changes the point _count_ rebuilds the handles rather than repositioning stale ones.
+
+  Only the deferred path is new. A write outside a drag still syncs and emits immediately, a plain handle drag still reports `point-moved` and nothing else, and the line's own editing methods still emit their precise `point-*` events at the call site.
+
+- 87e425a: Add a `'nowhere'` projection scope, and stop an empty scope from being bypassed.
+
+  **The bug.** `KonvexLine.project` returns `undefined` for two unrelated reasons — a line with fewer than two points (nothing to project onto _yet_) and an empty scope (nothing is allowed, ever) — and `EditableLine`'s stage `click` / `dblclick` handlers treated them alike, falling through to `addPoint(p)`. So the one scope that forbids adding was the one scope that appended unconditionally, at the raw cursor, ignoring every part rule. The assist had already got this right and previewed nothing, which made it worse: the point arrived with no indication it could.
+
+  Both handlers now go through one private `addAtProjection`, which checks the scope _before_ the projection. The short-line append survives, because it is the only way a line can be seeded by clicking — it just no longer doubles as an escape hatch from the scope. That also means a line configured `'nowhere'` from the start never gets a first point from a gesture.
+
+  **`'nowhere'`.** A new `LINE_PROJECTION_SCOPES` entry, `[]`, for a line that stays editable — points drag, select, align, straighten, simplify, delete — but takes no _new_ ones. No subset of the parts could express that, and switching `addOnDblClick`/`addOnAltClick` off is not the same thing: those close the two gestures you name, while this works one level below, on `project` itself, so the assist previews nothing and `breakOnDblClick` goes inert on its own. The imperative API (`addPoint`, `insertPoint`, …) is deliberately not gated — the scope governs gestures and projection, not what a host asks for outright.
+
+  **`lineProjectionParts` never returns an accidentally-empty set.** It previously handed back whatever it was given: an unknown name became `undefined` (and `EditableLine` then stored `undefined` in `projectionScope`, so a double-click on the line threw `Cannot read properties of undefined (reading 'includes')`), and `['typo']` became a scope allowing nothing. An empty scope is the _most_ restrictive answer there is, so it now has to be asked for rather than arrived at: only an explicit `[]` or `'nowhere'` resolves to empty, while `undefined`, `null`, a non-array, an unknown name, and an array naming no real part all resolve to `'anywhere'`. Recognised parts are de-duplicated and returned in `start`, `internal`, `end` order, so two spellings of one set now compare equal.
+
+  `EditableLine.projectionScope` became a `customRef` that normalises on write, so the invariant holds for every read instead of being re-checked at each of them, and a re-assignment that changes nothing no longer wakes the assist and handle watchers.
+
+  `'nowhere'` is **not** in the toolbar's scope cycle: it is an authoring choice, and landing on it by one stray click would leave a line whose add gestures silently do nothing. It does get a face of its own (a cancel glyph, "Add points: nowhere") for when a host sets it — the generic fallback was the _permissive_ ray glyph, which would have read as "anywhere" on the one scope that adds nothing — and cycling from it restarts at `anywhere`, so the toolbar can always get back out.
+
+- 448c9af: Fix `points-replaced` being swallowed when a host write shares a flush with a library edit.
+
+  The self-write marker was a single boolean, and Vue watchers flush once per tick — so the flag was consumed once no matter how many writes shared the flush, and a batch holding both a library edit and a host assignment to `line.points` read as purely self-written. The host's write went unannounced.
+
+  That is not an exotic interleaving. The `point-*` events are emitted synchronously, so a host that normalises geometry from inside a `point-added` listener — snap to grid, clamp to bounds, validate — writes in the library's own flush _every time_. Such a host never received `points-replaced` at all.
+
+  Three consequences, worst last:
+
+  - The write is unreported, so anything rebuilding from events misses it.
+  - When the host's write lands _after_ the library's, the per-point event describes a state that no longer exists: `addPoint` then a host write shrinking the array left `point-added` at index 3 on a two-point line, with nothing to correct it. A replaying persister ended up longer than the canvas.
+  - It bypassed the mid-drag deferral fix. A host write sharing a flush with a `dragmove` read as own, so the deferral flag was never set, and the handles stayed stale past `dragend` — restoring the geometry corruption that fix had just closed (grabbing a stale handle snaps its point back).
+
+  The marker is now a pair of array identities rather than a boolean: the array `writePoints` last wrote, and the last array the watch settled on. A write is foreign when the current value is neither — and `writePoints` also checks _before_ overwriting, since by the time the watch runs the array it would have compared against is gone. That is what makes a mixed flush report both events. The `points` ref hands back the very array it was given, so identity is a sound test.
+
+  Two limits stated rather than hidden: a per-point event already emitted cannot be retracted if the host's write undoes it (the trailing `points-replaced` is the correction), and a mutation made _in place_ is reported by nothing, since it never triggers the ref — as was already the case.
+
+  Lone writes of either kind, repeated library edits in one flush, multi-frame drags, and `simplify()` are all unchanged.
+
 ## 1.3.0
 
 ### Minor Changes
