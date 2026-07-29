@@ -124,6 +124,14 @@ export class EditableLine extends KonvexGroup {
   private _dragging = false
   /** Set by {@link writePoints}; consumed by the wholesale-replace watch. */
   private _selfWrite = false
+  /**
+   * A *foreign* `points` replacement arrived mid-drag and its reaction was
+   * deferred; the drag end owes it a handle resync and a `points-replaced`.
+   *
+   * The write itself always lands — only the reaction is postponed, because
+   * re-positioning handles mid-drag would fight Konva's own drag positioning.
+   */
+  private _deferredPointsWrite = false
   private _handles: KonvexRect[] = []
   private _options: (PointOptions | undefined)[]
 
@@ -301,8 +309,14 @@ export class EditableLine extends KonvexGroup {
           this._selfWrite = false
           // A handle drag writes points on every move; applyDragDelta has already
           // moved the handles it touched, and re-positioning mid-drag would fight
-          // Konva's own drag positioning.
-          if (this._dragging) return
+          // Konva's own drag positioning. A write from *outside* is a different
+          // matter: it still has to be answered, just not yet — so remember it for
+          // the drag end rather than dropping it, which used to leave the handles
+          // permanently stale and the write unannounced.
+          if (this._dragging) {
+            if (!own) this._deferredPointsWrite = true
+            return
+          }
           this.syncToPoints()
           // Only a write this class did not make gets here unreported: EL's own
           // editing methods emit their precise `point-*` event at the call site.
@@ -363,6 +377,16 @@ export class EditableLine extends KonvexGroup {
       }
       this._dragOrigins = []
       this.hideDragConstraint()
+      // Drain a replacement that arrived mid-drag, after the drag's own report so
+      // `point-moved` still comes first. Deferring is not the same as ignoring: the
+      // handles are stale until this runs, and a stale handle is not cosmetic — the
+      // next drag takes its delta from the handle against the *point*, so grabbing
+      // one would snap its point back by the staleness, silently undoing the write.
+      if (this._deferredPointsWrite) {
+        this._deferredPointsWrite = false
+        this.syncToPoints()
+        this.events.emit('points-replaced', { count: this.pointCount })
+      }
     })
 
     this.line.onDblClick(e => {

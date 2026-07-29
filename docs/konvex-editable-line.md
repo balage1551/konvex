@@ -254,7 +254,7 @@ every one is emitted *after* the edit has settled: a handler can read
 | `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
 | `point-removed` | `{ index, point, count }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
 | `point-moved` | `{ index, point, from }` | a drag (**on release**), `movePoint`, `straightenSelection` |
-| `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` |
+| `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` — **deferred to the drag end** if it arrives mid-drag |
 
 ```ts
 el.events.on('point-moved', ({ index, point, dragging }) => {
@@ -276,6 +276,14 @@ Three things worth knowing:
   konvex does not invent per-point events for it: treat any index-keyed state you
   hold as invalid and re-read. `simplify()` reports this way too — which points
   survived a reshape is not a sequence of removals.
+- **A write that arrives mid-drag is deferred, not dropped.** A host writing
+  `line.points` while a handle is being dragged (an undo, a collaborative patch)
+  lands in the geometry immediately, but its handle resync and its
+  `points-replaced` wait for the drag to end — repositioning handles mid-drag would
+  fight Konva's own drag positioning. The event then arrives *after* that drag's
+  `point-moved`, so the order a listener sees is the order things settled. Nothing
+  is coalesced: the line's own per-frame drag writes never emit this event, so a
+  drag with no foreign write in it stays silent.
 - **These are not the container signals.** An `EditableLine` is a `KonvexGroup`,
   so it also has core `signals` with `child-added`/`child-removed` — those
   describe its *internal* structure (the line, the assist group, the handle

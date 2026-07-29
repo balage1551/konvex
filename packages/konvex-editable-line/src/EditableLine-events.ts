@@ -51,6 +51,10 @@ export interface EditableLinePointMove {
  * `line.points`, or `simplify()`. Any index-keyed state a host holds is invalid;
  * re-read from `pointCount`/`pointInfos`. No per-point event accompanies this:
  * the old and new arrays cannot be told apart point-by-point without guessing.
+ *
+ * A write that arrives while a handle is being dragged is **deferred** to the drag
+ * end (after that drag's `point-moved`), not dropped: the geometry takes it at
+ * once, but the handles cannot move mid-drag without fighting Konva.
  */
 export interface EditableLinePointsReplaced {
   count: number
