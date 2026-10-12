@@ -18,6 +18,7 @@ import {
   type ScalableComponents,
 } from './EditableLine-types'
 import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-events'
+import { registerEditableLineKeys, trackEditableLine } from './EditableLine-keys'
 
 let elSeq = 0
 
@@ -245,6 +246,8 @@ export class EditableLine extends KonvexGroup {
 
     window.addEventListener('keydown', this._onKey)
     window.addEventListener('keyup', this._onKey)
+    registerEditableLineKeys()
+    trackEditableLine(this, true)
 
     // Dragging the whole line (the group body) also suppresses the assist.
     // Handle drags cancel-bubble, so these fire only for body drags.
@@ -314,6 +317,51 @@ export class EditableLine extends KonvexGroup {
     if (this.selection.value.length) this.selection.value = []
   }
 
+  /** Select every selectable point. */
+  selectAll(): void {
+    const all: number[] = []
+    for (let i = 0; i < this.pointCount; i++) if (this.effectiveSelectable(i)) all.push(i)
+    this.selection.value = all
+  }
+
+  /**
+   * Move the selected points by `delta` (line-local units), each within its own
+   * movement constraint (`'x'` / `'y'` axis-locked, `false` pinned).
+   */
+  moveSelection(delta: Vector2d): void {
+    if (!this.selection.value.length) return
+    const f = [...this.line.points.value]
+    for (const i of this.selection.value) {
+      const mv = this.effectiveMovable(i)
+      if (mv === false) continue
+      if (mv !== 'y') f[i * 2] += delta.x
+      if (mv !== 'x') f[i * 2 + 1] += delta.y
+      const h = this._handles[i]
+      if (h) h.position.value = { x: f[i * 2], y: f[i * 2 + 1] }
+    }
+    this.line.points.value = f
+  }
+
+  /**
+   * Align the selected movable points along one axis: `axis: 'x'` gives every
+   * point the same x (a vertical arrangement); `edge` picks min / midpoint / max.
+   * No-op for fewer than two such points.
+   */
+  alignSelection(axis: 'x' | 'y', edge: 'start' | 'center' | 'end'): void {
+    const pts = this.pointInfos.value.filter(p => p.selected && p.movable !== false)
+    if (pts.length < 2) return
+    const values = pts.map(p => p[axis])
+    const target =
+      edge === 'start'
+        ? Math.min(...values)
+        : edge === 'end'
+          ? Math.max(...values)
+          : (Math.min(...values) + Math.max(...values)) / 2
+    for (const p of pts) {
+      this.movePoint(p.index, axis === 'x' ? { x: target, y: p.y } : { x: p.x, y: target })
+    }
+  }
+
   /** Remove every currently selected point (high indices first). */
   removeSelected(): void {
     for (const i of [...this.selection.value].sort((a, b) => b - a)) this.removePoint(i)
@@ -368,6 +416,7 @@ export class EditableLine extends KonvexGroup {
     window.removeEventListener('keydown', this._onKey)
     window.removeEventListener('keyup', this._onKey)
     window.removeEventListener('mouseup', this._onWindowUp, true)
+    trackEditableLine(this, false)
     this._stage.value?.off(this._ns)
     this.events.clear()
     super.destroy()

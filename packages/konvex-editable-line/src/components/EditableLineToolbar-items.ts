@@ -14,25 +14,6 @@ import type {
 export const TOOLBAR_SEPARATOR = 'separator' as const
 export type ToolbarSeparator = typeof TOOLBAR_SEPARATOR
 
-/**
- * Align the selected (movable) points along one axis. `axis: 'x'` gives every
- * point the same x (a vertical arrangement); `edge` picks min / midpoint / max.
- */
-function alignSelected(line: EditableLine, axis: 'x' | 'y', edge: 'start' | 'center' | 'end'): void {
-  const pts = line.pointInfos.value.filter(p => p.selected && p.movable !== false)
-  if (pts.length < 2) return
-  const values = pts.map(p => p[axis])
-  const target =
-    edge === 'start'
-      ? Math.min(...values)
-      : edge === 'end'
-        ? Math.max(...values)
-        : (Math.min(...values) + Math.max(...values)) / 2
-  for (const p of pts) {
-    line.movePoint(p.index, axis === 'x' ? { x: target, y: p.y } : { x: p.x, y: target })
-  }
-}
-
 /** At least two movable points selected — the precondition for an align. */
 function canAlign(ctx: EditableLineToolbarContext): 'disabled' | 'enabled' {
   const movable = ctx.points.filter(p => p.movable !== false).length
@@ -51,7 +32,7 @@ function alignItem(
     label,
     render: { icon },
     state: canAlign,
-    run: ctx => alignSelected(ctx.line, axis, edge),
+    run: ctx => ctx.line.alignSelection(axis, edge),
   }
 }
 

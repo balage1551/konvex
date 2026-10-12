@@ -16,6 +16,10 @@
                   :content-size="{ width: 1200, height: 800 }"
                   background="#333"
                   frame="yellow"
+                  :keyboard="keyboardOn"
+                  :keyboard-scope="keyboardScope"
+                  :movement-unit="movementUnit"
+                  :selection="selected ? [selected] : []"
                   class="w-100 h-100"
                   @ready="onStageReady"
                   @zoom="onZoom"
@@ -218,6 +222,29 @@
                   scope: {{ projectionScope }}
                 </v-btn>
               </div>
+            </div>
+
+            <div class="panel">
+              <div class="group-title">Keyboard</div>
+              <span class="muted">
+                Ctrl+Num± zoom · arrows move selection (Ctrl = fine) · editing a line: Ctrl+A / Ctrl+U (Esc) select all / none,
+                Ctrl+L then T/B/V align top/bottom/middle, Ctrl+L then L/R/H align left/right/center
+              </span>
+              <div>
+                <v-btn size="small" class="m-btn" :color="keyboardOn ? 'amber' : '#888888'" @click="keyboardOn = !keyboardOn">
+                  keyboard: {{ keyboardOn ? 'on' : 'off' }}
+                </v-btn>
+                <v-btn
+                  size="small"
+                  class="m-btn"
+                  color="amber"
+                  @click="keyboardScope = keyboardScope === 'focus' ? 'window' : 'focus'"
+                >
+                  scope: {{ keyboardScope }}
+                </v-btn>
+              </div>
+              <span class="muted">movement unit: {{ movementUnit }} (arrow = ×20, Ctrl+arrow = ×1)</span>
+              <v-slider v-model="movementUnit" :min="0.5" :max="10" :step="0.5" density="compact" hide-details />
             </div>
 
             <!-- Host-owned selection behaviour (applies to every object). -->
@@ -737,7 +764,7 @@ import PmiSplitPane from './components/PmiSplitPane.vue'
 import PmiSplitPaneContainer from './components/PmiSplitPaneContainer.vue'
 import Konva from 'konva'
 import { KonvexStageContainer } from '@balage1551/konvex'
-import type { KonvexStageExpose, WorldMode, ZoomMode } from '@balage1551/konvex'
+import type { KeyboardScope, KonvexStageExpose, WorldMode, ZoomMode } from '@balage1551/konvex'
 import type { KonvexStage } from '@balage1551/konvex'
 import type { KonvexLayer } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
@@ -774,6 +801,9 @@ const WORLD_MODES = ['free', 'elastic', 'clipped', 'bounded'] as const
 const worldMode = ref<WorldMode>('elastic')
 const zoomMode = ref<ZoomMode>('proportional')
 const unitScale = ref(1) // measurement scale (real units per world unit)
+const keyboardOn = ref(true)
+const keyboardScope = ref<KeyboardScope>('focus')
+const movementUnit = ref(1)
 const cursor = shallowRef<{ x: number; y: number } | null>(null)
 const altDown = ref(false)
 const lineProjection = shallowRef<LineProjection | null>(null)

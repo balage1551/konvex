@@ -1,5 +1,10 @@
 <template>
-  <div ref="rootEl" class="kx-root">
+  <div
+    ref="rootEl"
+    class="kx-root"
+    :tabindex="props.keyboard && props.keyboardScope === 'focus' ? 0 : undefined"
+    @pointerdown="onPointerDown"
+  >
     <div ref="scrollEl" class="kx-scroll" @scroll="onScroll">
       <div ref="spacerEl" class="kx-spacer" />
     </div>
@@ -16,10 +21,20 @@ import { KonvexRect } from '../KonvexRect'
 import { KonvexShape } from '../KonvexShape'
 import { KonvexContainer } from '../KonvexContainer'
 import type { KonvexBase } from '../KonvexBase'
+import { KonvexNode } from '../KonvexNode'
 import type { Vector2d } from '../KonvexTypes'
+import {
+  keyRegistryVersion,
+  matchesKeyStroke,
+  resolveKeyBindings,
+  type KeyScheme,
+  type ResolvedKeyBinding,
+} from '../KonvexKeyboard'
 import {
   DEFAULT_ZOOM_LEVELS,
   type ContentSize,
+  type KeyboardScope,
+  type KonvexStageExpose,
   type WorldMode,
   type ZoomMode,
   type ZoomStepType,
@@ -50,6 +65,13 @@ const props = withDefaults(
     background?: string
     /** Draw a 1px boundary frame around the content extent, in this colour. */
     frame?: string
+    keyboard?: boolean
+    keyboardScope?: KeyboardScope
+    keyScheme?: KeyScheme
+    keyBindings?: KeyScheme
+    selection?: readonly KonvexBase[]
+    movementUnit?: number
+    chordTimeout?: number
   }>(),
   {
     worldMode: 'elastic',
@@ -66,6 +88,13 @@ const props = withDefaults(
     zoomOnWheel: true,
     background: 'transparent',
     frame: undefined,
+    keyboard: true,
+    keyboardScope: 'focus',
+    keyScheme: undefined,
+    keyBindings: undefined,
+    selection: () => [],
+    movementUnit: 1,
+    chordTimeout: 1000,
   },
 )
 
@@ -387,6 +416,30 @@ function scaledArea(worldArea: number): number {
   return worldArea * props.scale ** 2
 }
 
+/**
+ * Move nodes by `delta` world units: in `bounded` mode each is clamped inside
+ * the world; in free/elastic the auto-sized world is re-measured — the same
+ * treatment a drag gets.
+ */
+function moveNodes(nodes: readonly KonvexBase[], delta: Vector2d): void {
+  let moved = false
+  for (const n of nodes) {
+    if (!(n instanceof KonvexNode)) continue
+    n.x.value = { mode: 'by', value: delta.x }
+    n.y.value = { mode: 'by', value: delta.y }
+    if (props.worldMode === 'bounded') clampNode(n.konvaRoot())
+    moved = true
+  }
+  if (moved) contentChanged()
+}
+
+function contentChanged(): void {
+  if (props.worldMode === 'free' || props.worldMode === 'elastic') {
+    recompute()
+    applyTransform()
+  }
+}
+
 // Push the measurement scale down to every shape (recursing into groups).
 function propagateScale(children: readonly KonvexBase[]): void {
   for (const c of children) {
@@ -447,6 +500,119 @@ function onTouchEnd(e: TouchEvent): void {
   }
 }
 
+// --- keyboard ---------------------------------------------------------------
+// Effective bindings, rebuilt lazily when the scheme/overrides change or a module
+// registers (e.g. the first EditableLine is created after the stage mounted).
+let keyTable: ResolvedKeyBinding[] | null = null
+let keyTableVersion = -1
+watch([() => props.keyScheme, () => props.keyBindings], () => (keyTable = null), { deep: true })
+
+function bindings(): ResolvedKeyBinding[] {
+  if (!keyTable || keyTableVersion !== keyRegistryVersion()) {
+    keyTable = resolveKeyBindings(props.keyScheme, props.keyBindings)
+    keyTableVersion = keyRegistryVersion()
+  }
+  return keyTable
+}
+function isEditable(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false
+  return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)
+}
+/**
+ * Offer `e` to each binding in turn (they are in dispatch order); the first
+ * dispatcher that reports its key as applicable consumes it.
+ */
+function dispatchFirst(candidates: readonly ResolvedKeyBinding[], e: KeyboardEvent): boolean {
+  const s = stage.value
+  if (!s) return false
+  for (const b of candidates) {
+    const ctx = {
+      key: b.key,
+      event: e,
+      stage: s,
+      view: api,
+      selection: props.selection,
+      movementUnit: props.movementUnit,
+    }
+    if (b.module.dispatch(ctx)) return true
+  }
+  return false
+}
+
+/**
+ * An in-progress key sequence: the bindings still possible, how many strokes
+ * matched so far, and — when the prefix is itself a complete binding (`Ctrl+A`
+ * beside `Ctrl+A, T`) — that binding to run if the sequence isn't continued.
+ */
+interface PendingChord {
+  candidates: ResolvedKeyBinding[]
+  depth: number
+  fallback: { bindings: ResolvedKeyBinding[]; event: KeyboardEvent } | null
+  timer: ReturnType<typeof setTimeout> | undefined
+}
+let chord: PendingChord | null = null
+
+/** Drop the pending sequence; with `runFallback`, run its complete-prefix binding. */
+function endChord(runFallback: boolean): void {
+  const c = chord
+  if (!c) return
+  chord = null
+  clearTimeout(c.timer)
+  if (runFallback && c.fallback) dispatchFirst(c.fallback.bindings, c.fallback.event)
+}
+
+const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock'])
+
+function onKeyDown(e: KeyboardEvent): void {
+  if (!props.keyboard || !stage.value || e.isComposing || e.defaultPrevented || isEditable(e.target)) return
+  // A bare modifier press is part of the next stroke, never a stroke itself.
+  if (MODIFIER_KEYS.has(e.key)) return
+  const consume = () => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  const depth = chord?.depth ?? 0
+  const matching = (chord?.candidates ?? bindings()).filter(
+    b => b.strokes.length > depth && matchesKeyStroke(b.strokes[depth], e),
+  )
+  if (chord && !matching.length) {
+    // Not a continuation: Escape just cancels; any other key ends the sequence
+    // (running the plain prefix binding, if any) and is then handled afresh.
+    if (e.key === 'Escape') {
+      endChord(false)
+      consume()
+      return
+    }
+    endChord(true)
+    onKeyDown(e)
+    return
+  }
+  const complete = matching.filter(b => b.strokes.length === depth + 1)
+  const longer = matching.filter(b => b.strokes.length > depth + 1)
+  if (longer.length) {
+    // Wait for the next stroke; a complete binding of this prefix becomes the
+    // fallback if the sequence isn't continued within `chordTimeout`.
+    endChord(false)
+    chord = {
+      candidates: longer,
+      depth: depth + 1,
+      fallback: complete.length ? { bindings: complete, event: e } : null,
+      timer: props.chordTimeout > 0 ? setTimeout(() => endChord(true), props.chordTimeout) : undefined,
+    }
+    consume()
+    return
+  }
+  endChord(false)
+  if (complete.length && dispatchFirst(complete, e)) consume()
+}
+function onPointerDown(): void {
+  // Take focus on any press inside (canvas or scrollbars) so keys reach us.
+  if (props.keyboard && props.keyboardScope === 'focus') rootEl.value?.focus({ preventScroll: true })
+}
+function keyTarget(scope: KeyboardScope = props.keyboardScope): HTMLElement | Window | undefined {
+  return scope === 'window' ? window : rootEl.value
+}
+
 // --- sizing / lifecycle ---------------------------------------------------
 function syncViewportSize(): void {
   const el = scrollEl.value
@@ -490,6 +656,8 @@ onMounted(() => {
   vEl.addEventListener('touchmove', onTouchMove, { passive: false })
   vEl.addEventListener('touchend', onTouchEnd)
 
+  keyTarget()?.addEventListener('keydown', onKeyDown as EventListener)
+
   resizeObserver = new ResizeObserver(() => syncViewportSize())
   resizeObserver.observe(scrollEl.value!)
 
@@ -498,6 +666,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  endChord(false)
+  keyTarget()?.removeEventListener('keydown', onKeyDown as EventListener)
   const vEl = viewportEl.value
   if (vEl) {
     vEl.removeEventListener('wheel', onWheel)
@@ -546,8 +716,15 @@ watch(
   },
 )
 watch(() => props.frame, updateFrame)
+watch(
+  () => props.keyboardScope,
+  (scope, old) => {
+    keyTarget(old)?.removeEventListener('keydown', onKeyDown as EventListener)
+    keyTarget(scope)?.addEventListener('keydown', onKeyDown as EventListener)
+  },
+)
 
-defineExpose({
+const api: KonvexStageExpose = {
   get stage() {
     return stage.value
   },
@@ -576,14 +753,18 @@ defineExpose({
   resetZoom,
   scrollTo,
   scrollBy,
+  moveNodes,
+  contentChanged,
   screenToWorld,
   worldToScreen,
-})
+}
+defineExpose(api)
 </script>
 
 <style scoped>
 .kx-root {
   position: relative;
+  outline: none;
   width: 100%;
   height: 100%;
   overflow: hidden;

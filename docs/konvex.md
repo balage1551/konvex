@@ -182,6 +182,13 @@ unscaled **overlay** layer, and provides zoom / scroll / world-mode.
 | `zoomOnWheel` | `boolean` | — | Enable ctrl+wheel / pinch zoom. |
 | `background` | `string` | — | CSS background of the viewport. |
 | `frame` | `string` | — | Draw a 1px boundary frame around the content extent, in this colour. |
+| `keyboard` | `boolean` | `true` | Turn keyboard support on/off as a whole. See [Keyboard](#keyboard). |
+| `keyboardScope` | `'focus' \| 'window'` | `'focus'` | `focus`: keys only while the stage has focus (it takes it on pointer-down); `window`: anywhere except editable fields. |
+| `keyScheme` | `KeyScheme` | — | A complete scheme; **replaces** the registered defaults (unmentioned keys are unbound). |
+| `keyBindings` | `KeyScheme` | — | Per-key overrides on top of the scheme/defaults. |
+| `selection` | `KonvexBase[]` | `[]` | The host-owned selection keyboard actions act on. |
+| `movementUnit` | `number` | `1` | Keyboard move step in world units (fine move ×1, move ×20). |
+| `chordTimeout` | `number` | `1000` | ms a key sequence waits for its next stroke (`0` = forever). |
 
 \* Defaults reflect the component's own prop defaults where declared; unspecified
 ones fall back to Konva/behavioural defaults.
@@ -218,7 +225,53 @@ const kx = shallowRef<KonvexStageExpose>()
 | `zoomTo(level, anchor?)` / `zoomBy(factor, anchor?)` / `zoomIn(anchor?)` / `zoomOut(anchor?)` | Zoom controls. |
 | `zoomToFit()` / `zoomToFitX()` / `zoomToFitY()` / `resetZoom()` | Fit / reset. |
 | `scrollTo(x, y)` / `scrollBy(dx, dy)` | Scroll. |
+| `contentChanged()` | Re-size a free/elastic world after a non-drag geometry change. |
+| `moveNodes(nodes, delta)` | Move nodes by `delta` world units like a drag (clamped in `bounded`, re-sizes free/elastic). |
 | `screenToWorld(p)` / `worldToScreen(p)` | Coordinate conversion. |
+
+### Keyboard
+
+Shortcuts are named by hierarchical **keys** (`core.stage.zoom.in`,
+`editableLine.node.align.vertical.top`) and bound to keystrokes. Each module
+(core included) statically registers its keys with default bindings plus one
+dispatcher via `registerKeyModule({ namespace, keys, dispatch, priority? })`. On
+keydown the stage finds every key bound to the stroke and calls their dispatchers
+by descending `priority` (default 0), then registration order; the first returning `true` consumes the event (a dispatcher
+returns `false` when its key isn't active, e.g. nothing selected).
+
+Binding resolution: `keyScheme` (if given) replaces the defaults, then
+`keyBindings` overrides per key. An empty binding (`''`, `[]`, `null`) turns a
+key off; on a group prefix (`'editableLine': ''`) it turns off the whole subtree.
+`defaultKeyScheme()` returns the registered defaults with full key names, as a
+base to spread into a custom scheme.
+
+Stroke syntax: modifiers `Ctrl`, `Shift`, `Alt`, `Meta`/`Cmd`, `Mod` (Meta on
+macOS, else Ctrl) joined by `+`, then a `KeyboardEvent.key` name
+(case-insensitive) or alias: `Up`/`Down`/`Left`/`Right`, `Space`, `Esc`, `Del`,
+`Plus`, `Minus`; numpad keys `Num0`–`Num9`, `Num+`, `Num-`, `Num*`, `Num/`,
+`Num.`, `NumEnter` match by `code`. A binding may be an array of strokes.
+
+**Sequences (chords):** strokes separated by commas, e.g. `'Ctrl+K, T'`, fire
+only when pressed in order. While a sequence is pending the stage consumes the
+keys; `Escape` cancels it. If the prefix is also a binding on its own
+(`Ctrl+A` beside `Ctrl+A, T`), that binding runs when the sequence isn't
+continued: on `chordTimeout`, or immediately when a non-matching key is pressed
+(which is then handled normally). A comma directly after `+` is the comma key
+(`'Ctrl+,'`); the alias `Comma` also works.
+
+```vue
+<KonvexStageContainer
+  :selection="selected ? [selected] : []"
+  :movement-unit="5"
+  :key-bindings="{ 'core.stage.zoom.in': ['Ctrl+Num+', 'Ctrl+='], 'core.selection.fineMove': '' }"
+/>
+```
+
+| Key | Default | Active when |
+| --- | --- | --- |
+| `core.stage.zoom.in` / `.out` | `Ctrl+Num+` / `Ctrl+Num-` | always |
+| `core.selection.move.{up,down,left,right}` | arrows | `selection` has a node — moves 20 × `movementUnit` |
+| `core.selection.fineMove.{up,down,left,right}` | `Ctrl`+arrows | same — moves 1 × `movementUnit` |
 
 ---
 

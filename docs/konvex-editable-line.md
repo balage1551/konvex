@@ -115,11 +115,32 @@ Extends `KonvexGroupConfig`. Fields:
 | `movePoint(index, p)` | Move a point to `p`. |
 | `select(index, { extend? })` | Select a point (or toggle-extend with `extend: true`). |
 | `clearSelection()` | Deselect all. |
+| `selectAll()` | Select every selectable point. |
+| `moveSelection(delta)` | Move the selected points (line-local units), respecting each point's `movable`. |
+| `alignSelection(axis, edge)` | Align selected movable points: `axis: 'x'` → same x; `edge`: `'start' \| 'center' \| 'end'`. No-op for < 2. |
 | `removeSelected()` | Remove every selected point. |
 | `straightenSelection()` | Project the intermediate **selected** points onto the line through the first/last selected; pinned points stay. No-op for < 3 selected. |
 | `simplify(threshold?)` | Simplify the whole polyline in place (clears selection & overrides — indices change). No-op for < 3 points. |
 | `setPointOptions(index, options)` | Set/override per-point `movable`/`selectable`. |
 | `destroy()` | Tear down (also removes window/key listeners). |
+
+### Keyboard
+
+EditableLine registers the `editableLine` key module (see the core
+[Keyboard](konvex.md#keyboard) section) on first construction. All keys act on
+the lines in editing mode (`active`) on the stage the key was pressed on. The
+module has priority 10, so the node moves are tried before `core.selection.move.*`:
+with points selected the arrows move those points; with none selected they
+decline and the core key moves the whole line.
+
+| Key | Default | Active when |
+| --- | --- | --- |
+| `editableLine.node.move.{up,down,left,right}` | arrows | ≥ 1 point selected — 20 × `movementUnit` |
+| `editableLine.node.fineMove.{up,down,left,right}` | `Ctrl`+arrows | ≥ 1 point selected — 1 × `movementUnit` |
+| `editableLine.node.select.all` | `Ctrl+A` | a line is in editing mode |
+| `editableLine.node.select.none` | `Ctrl+U`, `Escape` | a line is in editing mode |
+| `editableLine.node.align.vertical.{top,bottom,center}` | `Ctrl+L, T` / `B` / `V` | ≥ 1 point selected |
+| `editableLine.node.align.horizontal.{left,right,center}` | `Ctrl+L, L` / `R` / `H` | ≥ 1 point selected |
 
 ---
 

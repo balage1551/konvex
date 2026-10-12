@@ -1,6 +1,8 @@
 import type { KonvexStage } from '../KonvexStage'
 import type { KonvexLayer } from '../KonvexLayer'
 import type { Vector2d } from '../KonvexTypes'
+import type { KonvexBase } from '../KonvexBase'
+import type { KeyScheme } from '../KonvexKeyboard'
 
 /** World content extent in world units. */
 export interface ContentSize {
@@ -46,7 +48,36 @@ export interface KonvexStageProps {
   zoomOnWheel?: boolean
   /** CSS background of the viewport. */
   background?: string
+  /** Turn keyboard support on/off as a whole (default on). */
+  keyboard?: boolean
+  /**
+   * Where keystrokes are caught: `'focus'` (default) — only while the stage has
+   * focus (it takes it on pointer-down); `'window'` — anywhere on the page
+   * except editable fields.
+   */
+  keyboardScope?: KeyboardScope
+  /**
+   * A complete key scheme (full key name → binding). When set it replaces the
+   * registered defaults: keys it doesn't mention are unbound. Spread
+   * `defaultKeyScheme()` into it to start from the defaults.
+   */
+  keyScheme?: KeyScheme
+  /** Per-key overrides on top of the scheme/defaults; an empty binding turns a key (or group) off. */
+  keyBindings?: KeyScheme
+  /** The host-owned selection that keyboard actions (e.g. `core.selection.move.*`) act on. */
+  selection?: readonly KonvexBase[]
+  /** Keyboard movement step in world units: fine moves step 1×, normal moves 20×. Default 1. */
+  movementUnit?: number
+  /**
+   * How long (ms) a key sequence (`'Ctrl+K, T'`) waits for its next stroke.
+   * When the prefix is also a binding on its own, that binding runs on timeout.
+   * `0` = wait indefinitely. Default 1000.
+   */
+  chordTimeout?: number
 }
+
+/** Where a stage catches keystrokes. */
+export type KeyboardScope = 'focus' | 'window'
 
 /** The interface exposed via a template ref (`defineExpose`). */
 export interface KonvexStageExpose {
@@ -75,6 +106,16 @@ export interface KonvexStageExpose {
   resetZoom(): void
   scrollTo(x: number, y: number): void
   scrollBy(dx: number, dy: number): void
+  /**
+   * Move nodes by `delta` world units as one user edit: respects `bounded` mode
+   * (each node is clamped inside the world) and re-sizes a free/elastic world.
+   */
+  moveNodes(nodes: readonly KonvexBase[], delta: Vector2d): void
+  /**
+   * Tell the stage the content geometry changed outside a drag (e.g. points
+   * moved programmatically) so a free/elastic world re-sizes to fit.
+   */
+  contentChanged(): void
   /** Convert a point in viewport (canvas) pixels to world units. */
   screenToWorld(p: Vector2d): Vector2d
   /** Convert a point in world units to viewport (canvas) pixels. */

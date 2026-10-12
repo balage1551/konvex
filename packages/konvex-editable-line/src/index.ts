@@ -3,6 +3,7 @@
 export * from './EditableLine-types'
 export * from './EditableLine-events'
 export * from './EditableLine'
+export * from './EditableLine-keys'
 // Toolbar item framework + builtin registry + the Vue bridge component.
 export * from './components/EditableLineToolbar-types'
 export * from './components/EditableLineToolbar-items'
