@@ -2,6 +2,8 @@ import type { Vector2d } from '@balage1551/konvex'
 import type { KonvexGroupConfig } from '@balage1551/konvex'
 import type { KonvexLineConfig, LineProjectionScopeInput } from '@balage1551/konvex'
 import type { SimplificationThreshold } from '@balage1551/konvex'
+import type { FillInput, KonvexContent, PolylineEnd, Stroke } from '@balage1551/konvex'
+import type { EditableLine } from './EditableLine'
 
 // Re-export so a config author can name the type from the editableline package.
 export type { SimplificationThreshold } from '@balage1551/konvex'
@@ -98,11 +100,76 @@ export interface RubberBandConfig {
   stroke?: string
 }
 
+/** What a custom arrowhead factory is told about the head it should build. */
+export interface ArrowHeadContext {
+  /** Which end the head decorates. */
+  end: PolylineEnd
+  /** The line being decorated. */
+  line: EditableLine
+  /** Extent along the line (the resolved {@link ArrowHeadConfig.size}). */
+  size: number
+  /** Extent across the line: `size / ratio`. */
+  width: number
+}
+
+/**
+ * Builds a custom arrowhead. Draw it in a frame whose origin is the tip and whose
+ * +x axis points the way the head points (out of the line), so the head itself
+ * lies along −x, from `0` back to `−size`. EL positions and rotates the frame.
+ */
+export type ArrowHeadFactory = (ctx: ArrowHeadContext) => KonvexContent
+
+/**
+ * A built-in arrowhead shape:
+ * - `triangle` — filled triangle, base `width` wide;
+ * - `open` — two strokes meeting at the tip (`—>`); no base, no fill;
+ * - `diamond` — filled rhombus, `size` long and `width` across;
+ * - `circle` — filled ellipse, `size` along the line and `width` across.
+ */
+export type ArrowHeadBuiltin = 'triangle' | 'open' | 'diamond' | 'circle'
+
+/** How far the line itself is shortened under a head. */
+export type ArrowHeadTrim = 'base' | 'tip' | 'none'
+
+/** One end's arrowhead. */
+export interface ArrowHeadConfig {
+  /** Whether the head is drawn (default `true` once configured). */
+  show?: boolean
+  /** Built-in shape or a factory (default `'triangle'`). */
+  shape?: ArrowHeadBuiltin | ArrowHeadFactory
+  /**
+   * Extent along the line (default `10`). World units when the `'decoration'`
+   * component scales, screen pixels when it does not.
+   */
+  size?: number
+  /** Length ÷ width (default `1`): `2` makes the head twice as long as it is wide. */
+  ratio?: number
+  /**
+   * Gap between the end point and the tip, measured along the line, in world
+   * units (default `0`) — the radius of a circular object sitting on that point.
+   */
+  offset?: number
+  /**
+   * Where the drawn line stops: at the head's `'base'` (its back, `size` behind
+   * the tip), at its `'tip'`, or `'none'` to draw it whole. Default `'base'`, and
+   * `'tip'` for `open`, whose arms would otherwise stand clear of the line.
+   */
+  trim?: ArrowHeadTrim
+  /** Fill; defaults to the line's stroke colour for the filled shapes, none for `open`. */
+  fill?: FillInput
+  /**
+   * Stroke, merged field by field over a default of the line's colour and width,
+   * undashed. The filled shapes draw no stroke unless one is given.
+   */
+  stroke?: Stroke
+}
+
 /**
  * EL sub-parts whose on-screen size can scale with zoom: the line's stroke, the
- * point markers, and the assist helpers (preview marker + guide lines).
+ * point markers, the assist helpers (preview marker + guide lines), and the end
+ * decorations (arrowheads).
  */
-export type ScalableComponent = 'line' | 'marker' | 'helper'
+export type ScalableComponent = 'line' | 'marker' | 'helper' | 'decoration'
 /** `'all'`, `'none'`, or the explicit set of {@link ScalableComponent}s that scale. */
 export type ScalableComponents = 'all' | 'none' | ScalableComponent[]
 
@@ -127,12 +194,16 @@ export interface EditableLineConfig extends KonvexGroupConfig {
   rubberBand?: RubberBandConfig
   /** Thresholds used by the `simplify` operation (angle/distance). */
   simplification?: SimplificationThreshold
+  /** Arrowhead before the first point. Hidden on a closed or curved (`tension`) line. */
+  startHead?: ArrowHeadConfig
+  /** Arrowhead after the last point. Hidden on a closed or curved (`tension`) line. */
+  endHead?: ArrowHeadConfig
 
   /**
    * Which parts scale with zoom; the rest keep a constant on-screen size.
-   * `'line'` ties to the geometry's stroke width, `'marker'`/`'helper'` to the
-   * node size. Default `['line']` — geometry stroke scales, editing chrome stays
-   * constant.
+   * `'line'` ties to the geometry's stroke width, `'marker'`/`'helper'`/
+   * `'decoration'` to the node size. Default `['line', 'decoration']` — geometry
+   * and its arrowheads scale, editing chrome stays constant.
    */
   scalableComponents?: ScalableComponents
 

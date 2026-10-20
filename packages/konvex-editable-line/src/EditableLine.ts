@@ -4,10 +4,14 @@ import { KonvexGroup } from '@balage1551/konvex'
 import { KonvexLine, type LineProjection } from '@balage1551/konvex'
 import { type SimplificationThreshold, simplifyPoints, straightenPoints } from '@balage1551/konvex'
 import { KonvexCircle } from '@balage1551/konvex'
+import { KonvexEllipse } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
-import { LINE_PROJECTION_SCOPES, lineProjectionParts } from '@balage1551/konvex'
+import { LINE_PROJECTION_SCOPES, lineProjectionParts, polylineAnchor } from '@balage1551/konvex'
 import type { LineProjectionScope, LineProjectionScopeInput, Vector2d } from '@balage1551/konvex'
+import type { FillInput, KonvexContent, PolylineAnchor, PolylineEnd, Stroke } from '@balage1551/konvex'
 import {
+  type ArrowHeadConfig,
+  type ArrowHeadFactory,
   type AssistShow,
   defaultHandleStyle,
   type EditableLineConfig,
@@ -22,6 +26,34 @@ import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-e
 
 /** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
 const DEFAULT_SNAP_THRESHOLD = 10
+/** Default arrowhead extent along the line when `size` is unset. */
+const DEFAULT_HEAD_SIZE = 10
+
+/** `value` when it is a usable positive number, else `fallback`. */
+function positiveOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** What one end's arrowhead should look like right now; `null` = not drawn. */
+interface HeadPlan {
+  anchor: PolylineAnchor
+  shape: 'triangle' | 'open' | 'diamond' | 'circle' | ArrowHeadFactory
+  /** Head extent along and across the line, in the head's own frame. */
+  size: number
+  width: number
+  scalable: boolean
+  fill: FillInput | undefined
+  stroke: Stroke
+  strokeScale: boolean
+}
+
+/** Both ends' heads and the line trims that go with them. */
+interface HeadsPlan {
+  start: HeadPlan | null
+  end: HeadPlan | null
+  trimStart: number
+  trimEnd: number
+}
 
 /**
  * Whether a Konva click/dblclick came from the primary (left) mouse button.
@@ -86,8 +118,19 @@ export class EditableLine extends KonvexGroup {
   readonly persistentSelection: Ref<boolean>
   /** One row per point: index, coordinate, effective options and selection. */
   readonly pointInfos: ComputedRef<PointInfo[]>
+  /**
+   * Arrowhead before the first point. Replace the object or set a field
+   * (`startHead.value.show = true`); both take effect. Unconfigured, it is
+   * `{ show: false }`, so setting `show` alone gives the default triangle.
+   */
+  readonly startHead: Ref<ArrowHeadConfig>
+  /** Arrowhead after the last point. See {@link startHead}. */
+  readonly endHead: Ref<ArrowHeadConfig>
 
   private readonly _cfg: EditableLineConfig
+  /** Holds one group per end; each group carries that end's head node. */
+  private readonly _headGroup: KonvexGroup
+  private readonly _heads: Record<PolylineEnd, { group: KonvexGroup; node?: KonvexContent }>
   private readonly _handleGroup: KonvexGroup
   private readonly _assistGroup: KonvexGroup
   private readonly _assistMarker: KonvexCircle
@@ -181,7 +224,7 @@ export class EditableLine extends KonvexGroup {
       }
     })
     this.snapThreshold = ref(config.assist?.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
-    this.scalableComponents = ref(config.scalableComponents ?? ['line'])
+    this.scalableComponents = ref(config.scalableComponents ?? ['line', 'decoration'])
     this.defaultMovable = ref(config.movable ?? 'free')
     this.defaultSelectable = ref(config.selectable ?? true)
     this.addOnDblClick = ref(config.addOnDblClick ?? false)
@@ -197,6 +240,16 @@ export class EditableLine extends KonvexGroup {
     this._reconciled = this.line.points.value
     this.add(this.line)
     this._options = (config.points ?? []).map((_, i) => config.pointOptions?.[i])
+
+    // Arrowheads sit on the line and under the editing chrome. They listen like the
+    // line does: a head is part of it, so a click on one is a click on the line.
+    this.startHead = ref(config.startHead ?? { show: false }) as Ref<ArrowHeadConfig>
+    this.endHead = ref(config.endHead ?? { show: false }) as Ref<ArrowHeadConfig>
+    this._headGroup = new KonvexGroup()
+    this.add(this._headGroup)
+    this._heads = { start: { group: new KonvexGroup() }, end: { group: new KonvexGroup() } }
+    this._headGroup.add(this._heads.start.group)
+    this._headGroup.add(this._heads.end.group)
 
     // Assist visuals live in their own non-interactive group, in line space.
     this._assistGroup = new KonvexGroup({ listening: false })
@@ -315,6 +368,25 @@ export class EditableLine extends KonvexGroup {
         this.applyScalable()
         this.rebuildHandles()
       })
+      // A head's node is rebuilt only when what it *is* changes — its built-in
+      // shape, or for a factory the inputs the factory was called with. Everything
+      // else (placement, size, paint) is applied to the existing node below.
+      for (const end of ['start', 'end'] as const) {
+        const cfg = (): ArrowHeadConfig => this.headConfig(end).value
+        watch(
+          [
+            () => cfg().shape ?? 'triangle',
+            () => (typeof cfg().shape === 'function' ? positiveOr(cfg().size, DEFAULT_HEAD_SIZE) : 0),
+            () => (typeof cfg().shape === 'function' ? positiveOr(cfg().ratio, 1) : 0),
+          ],
+          () => this.rebuildHead(end),
+          { immediate: true },
+        )
+      }
+      // The plan is a pure read of everything a head depends on; applying it is a
+      // separate, untracked step, so building it cannot subscribe to the nodes it
+      // writes.
+      watch(() => this.planHeads(), plan => this.applyHeads(plan), { immediate: true })
       // Apply an assist-mode / projection change without waiting for a mouse move.
       watch([this.assistShow, this.projectionScope, this.snapThreshold], () => this.updateAssist())
       // Keep handles in sync when points are replaced wholesale (e.g. line.points
@@ -609,6 +681,131 @@ export class EditableLine extends KonvexGroup {
     this._assistGuide.strokeScaleEnabled.value = helper
   }
 
+  private headConfig(end: PolylineEnd): Ref<ArrowHeadConfig> {
+    return end === 'start' ? this.startHead : this.endHead
+  }
+
+  /** Whether a Konva hit landed on one of the arrowheads (or inside a custom one). */
+  private isHeadTarget(target: Konva.Node | undefined): boolean {
+    return !!target && this._headGroup.konvaRoot().isAncestorOf(target)
+  }
+
+  /** Replace an end's head node with a fresh one of the configured shape. */
+  private rebuildHead(end: PolylineEnd): void {
+    const slot = this._heads[end]
+    slot.node?.destroy()
+    slot.node = undefined
+    const cfg = this.headConfig(end).value
+    const shape = cfg.shape ?? 'triangle'
+    if (typeof shape === 'function') {
+      const size = positiveOr(cfg.size, DEFAULT_HEAD_SIZE)
+      slot.node = shape({ end, line: this, size, width: size / positiveOr(cfg.ratio, 1) })
+    } else if (shape === 'circle') {
+      slot.node = new KonvexEllipse()
+    } else {
+      slot.node = new KonvexLine({ closed: shape !== 'open' })
+    }
+    slot.group.add(slot.node)
+    this.applyHeads(this.planHeads())
+  }
+
+  /**
+   * Work out both heads and the trims under them, from the configs, the geometry,
+   * the line's paint and the zoom.
+   *
+   * A head needs an open, straight line: a closed one has no ends, and on a curve
+   * the straight-segment geometry would put the head off the drawn path. When the
+   * two heads would not both fit, neither is drawn — but the line still stops at
+   * the offsets, so it keeps meeting the objects on its ends rather than running
+   * under them.
+   */
+  private planHeads(): HeadsPlan {
+    const none: HeadsPlan = { start: null, end: null, trimStart: 0, trimEnd: 0 }
+    const line = this.line
+    if (line.closed.value || line.tension.value !== 0 || line.bezier.value) return none
+    const flat = line.points.value
+    const scalable = this.isScalable('decoration')
+    const strokeScale = this.isScalable('line')
+    // A constant-size head is `size` screen pixels, which is this much of the line.
+    const zoom = scalable ? 1 : Math.abs(this.effectiveScaleX.value) || 1
+    const color = line.strokeColor.value ?? '#000000'
+    const baseStroke: Stroke = {
+      color,
+      width: line.strokeWidth.value ?? 1,
+      lineCap: line.lineCap.value,
+      lineJoin: line.lineJoin.value,
+      dashEnabled: false,
+    }
+
+    const ends = (['start', 'end'] as const).map(end => {
+      const cfg = this.headConfig(end).value
+      if (!(cfg.show ?? true)) return { head: null, offset: 0, cut: 0 }
+      const shape = cfg.shape ?? 'triangle'
+      const size = positiveOr(cfg.size, DEFAULT_HEAD_SIZE)
+      const offset = positiveOr(cfg.offset, 0)
+      const trim = cfg.trim ?? (shape === 'open' ? 'tip' : 'base')
+      const cut = trim === 'none' ? 0 : offset + (trim === 'base' ? size / zoom : 0)
+      const anchor = polylineAnchor(flat, end, offset)
+      if (!anchor) return { head: null, offset, cut }
+      const filled = shape !== 'open'
+      const head: HeadPlan = {
+        anchor,
+        shape,
+        size,
+        width: size / positiveOr(cfg.ratio, 1),
+        scalable,
+        fill: cfg.fill ?? (filled ? color : undefined),
+        // A given stroke is switched on and fills in from the line; with none, the
+        // filled shapes are fill-only so a thick line does not fatten them.
+        stroke: cfg.stroke
+          ? { ...baseStroke, enabled: true, ...cfg.stroke }
+          : filled
+            ? { enabled: false }
+            : baseStroke,
+        strokeScale,
+      }
+      return { head, offset, cut }
+    })
+    const [s, e] = ends
+    if (s.cut + e.cut >= line.pixelLength.value) {
+      return { start: null, end: null, trimStart: s.offset, trimEnd: e.offset }
+    }
+    return { start: s.head, end: e.head, trimStart: s.cut, trimEnd: e.cut }
+  }
+
+  private applyHeads(plan: HeadsPlan): void {
+    this.line.trimStart.value = plan.trimStart
+    this.line.trimEnd.value = plan.trimEnd
+    for (const end of ['start', 'end'] as const) {
+      const { group, node } = this._heads[end]
+      const head = plan[end]
+      group.visible.value = !!head
+      if (!head || !node) continue
+      group.position.value = { x: head.anchor.x, y: head.anchor.y }
+      group.rotation.value = head.anchor.angle
+      group.scalable.value = head.scalable
+      // A factory's node is the host's own: placed, never restyled or reshaped.
+      if (typeof head.shape === 'function') continue
+      const { size, width } = head
+      if (node instanceof KonvexEllipse) {
+        node.position.value = { x: -size / 2, y: 0 }
+        node.radiusX.value = size / 2
+        node.radiusY.value = width / 2
+      } else if (node instanceof KonvexLine) {
+        const w = width / 2
+        node.points.value =
+          head.shape === 'open'
+            ? [-size, w, 0, 0, -size, -w]
+            : head.shape === 'diamond'
+              ? [0, 0, -size / 2, w, -size, 0, -size / 2, -w]
+              : [0, 0, -size, w, -size, -w]
+      } else continue
+      node.fill.value = head.fill
+      node.stroke.value = head.stroke
+      node.strokeScaleEnabled.value = head.strokeScale
+    }
+  }
+
   private effectiveMovable(i: number): PointMovement {
     return this._options[i]?.movable ?? this.defaultMovable.value
   }
@@ -848,8 +1045,11 @@ export class EditableLine extends KonvexGroup {
       if (!this.addOnAltClick.value || !this.active.value) return
       if (!isPrimaryButton(e)) return
       if (!e.evt.altKey) return
-      // only on this line or empty canvas — never on a handle or another shape
-      if (e.target !== stage && e.target !== this.line.konvaRoot()) return
+      // only on this line (heads included) or empty canvas — never on a handle or
+      // another shape
+      if (e.target !== stage && e.target !== this.line.konvaRoot() && !this.isHeadTarget(e.target)) {
+        return
+      }
       const p = this.localPointer()
       if (!p) return
       this.addAtProjection(p)
@@ -873,7 +1073,7 @@ export class EditableLine extends KonvexGroup {
       if (!this.active.value) return
       const hit = e.konvexTarget
       const handleIdx = this._handles.findIndex(h => h === hit)
-      const onLine = hit === this.line
+      const onLine = hit === this.line || this.isHeadTarget(e.target)
       if (handleIdx < 0 && !onLine) return
       const me = e.evt
       me.preventDefault()
