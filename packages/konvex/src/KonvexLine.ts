@@ -1,6 +1,8 @@
 import Konva from 'konva'
-import { computed, type ComputedRef, type Ref } from 'vue'
+import type { Context } from 'konva/lib/Context'
+import { computed, type ComputedRef, customRef, type Ref, watch } from 'vue'
 import { KonvexShape, type KonvexShapeConfig } from './KonvexShape'
+import { trimPolyline } from './KonvexPolylineOps'
 import { nodeAttr, numberAttr } from './WrapperTools'
 import type { KonvexLayer } from './KonvexLayer'
 import type { AttrSource, NumberParameter, Vector2d } from './KonvexTypes'
@@ -107,6 +109,33 @@ export interface KonvexLineConfig extends KonvexShapeConfig {
   closed?: AttrSource<boolean>
   /** Treat `points` as cubic-bezier control points. */
   bezier?: AttrSource<boolean>
+  /** Length left undrawn at the first end (see {@link KonvexLine.trimStart}). */
+  trimStart?: number
+  /** Length left undrawn at the last end (see {@link KonvexLine.trimEnd}). */
+  trimEnd?: number
+}
+
+/**
+ * A `number` ref that reads back what Konva could actually use: negative and
+ * non-finite writes land as `0`, so `0` alone means "untrimmed".
+ */
+function trimRef(initial: number | undefined): Ref<number> {
+  const clamp = (v: number): number => (Number.isFinite(v) && v > 0 ? v : 0)
+  return customRef<number>((track, trigger) => {
+    let value = clamp(initial ?? 0)
+    return {
+      get() {
+        track()
+        return value
+      },
+      set(v) {
+        const next = clamp(v)
+        if (next === value) return
+        value = next
+        trigger()
+      },
+    }
+  })
 }
 
 /**
@@ -120,6 +149,21 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
   readonly tension: Ref<number, AttrSource<NumberParameter>>
   readonly closed: Ref<boolean, AttrSource<boolean>>
   readonly bezier: Ref<boolean, AttrSource<boolean>>
+  /**
+   * Length (local geometry units, measured along the line) left undrawn before
+   * the first point; with {@link trimEnd}, a **render-only** shortening.
+   *
+   * `points` keep the real vertices, so everything that reasons about the line —
+   * {@link project}, {@link pixelLength}, `clientRect`, a host reading `points` —
+   * is unaffected; only the drawn stroke (and with it the hit region) stops
+   * short. Made for end decorations, which need the line to end where they begin.
+   *
+   * Applies to an open, straight polyline only: with `closed`, `tension` or
+   * `bezier` set the line is drawn whole, and a `KonvexArrow` ignores it.
+   */
+  readonly trimStart: Ref<number>
+  /** Length left undrawn after the last point. See {@link trimStart}. */
+  readonly trimEnd: Ref<number>
 
   /**
    * Polyline length in local geometry units (straight segments; ignores
@@ -151,6 +195,44 @@ export class KonvexLine<T extends Konva.Line = Konva.Line> extends KonvexShape<T
     if (config.tension !== undefined) this.tension.value = config.tension
     if (config.closed !== undefined) this.closed.value = config.closed
     if (config.bezier !== undefined) this.bezier.value = config.bezier
+
+    this.trimStart = trimRef(config.trimStart)
+    this.trimEnd = trimRef(config.trimEnd)
+    // Only a plain line: an Arrow draws its heads from its own `_sceneFunc`, which
+    // a replacement would skip — and they would no longer meet the trimmed ends.
+    if (this._node.getClassName() === 'Line') {
+      const node = this._node
+      const trimmed = (ctx: Context): void => {
+        if (node.closed() || node.tension() !== 0 || node.bezier()) {
+          node._sceneFunc(ctx)
+          return
+        }
+        const f = trimPolyline(node.points(), node.getAttr('trimStart'), node.getAttr('trimEnd'))
+        if (f.length < 4) return
+        ctx.beginPath()
+        ctx.moveTo(f[0], f[1])
+        for (let i = 2; i + 1 < f.length; i += 2) ctx.lineTo(f[i], f[i + 1])
+        ctx.strokeShape(node)
+      }
+      // Installed only while there is something to trim, so an untrimmed line
+      // keeps Konva's own draw. Konva also hit-tests through the scene function,
+      // so the hit region follows what is drawn. The lengths are mirrored onto the
+      // node as attributes because a Konva attribute write is what requests a
+      // redraw — a new trim with the function already installed would otherwise
+      // wait for some unrelated change to show.
+      this.scope.run(() =>
+        watch(
+          [this.trimStart, this.trimEnd],
+          ([s, e]) => {
+            node.setAttr('trimStart', s)
+            node.setAttr('trimEnd', e)
+            const want = s > 0 || e > 0 ? trimmed : undefined
+            if (node.attrs.sceneFunc !== want) node.setAttr('sceneFunc', want)
+          },
+          { immediate: true, flush: 'sync' },
+        ),
+      )
+    }
 
     this.pixelLength = computed(() => {
       const f = this.points.value
