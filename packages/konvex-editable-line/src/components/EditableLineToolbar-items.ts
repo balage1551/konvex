@@ -4,7 +4,7 @@
 // sit alongside any custom tools a host adds.
 import { h } from 'vue'
 import { LINE_PROJECTION_SCOPES } from '@balage1551/konvex'
-import type { LineProjectionScope, LineProjectionScopeName } from '@balage1551/konvex'
+import type { LineProjectionScope, LineProjectionScopeName, PolylineEnd } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type {
   EditableLineToolbarContext,
@@ -113,6 +113,38 @@ const toggleClosedItem: EditableLineToolbarItem = {
   run: ctx => {
     ctx.line.line.closed.value = !ctx.line.line.closed.value
   },
+}
+
+/**
+ * Show or hide one end's arrowhead. Only `show` flips, so the head comes back
+ * with the shape, size and offset it had. The glyph shows the current state.
+ * Disabled where heads are never drawn: a closed or curved line.
+ */
+function arrowHeadItem(end: PolylineEnd): EditableLineToolbarItem {
+  const head = (ctx: EditableLineToolbarContext) =>
+    end === 'start' ? ctx.line.startHead : ctx.line.endHead
+  const shown = (ctx: EditableLineToolbarContext): boolean => head(ctx).value.show ?? true
+  return {
+    id: `arrow-${end}`,
+    label: `Arrowhead at ${end}`,
+    render: ctx =>
+      h('i', {
+        class: [
+          'eltb-icon',
+          'mdi',
+          shown(ctx) ? (end === 'start' ? 'mdi-arrow-left' : 'mdi-arrow-right') : 'mdi-minus',
+        ],
+        title: `${shown(ctx) ? 'Hide' : 'Show'} the arrowhead at the ${end}`,
+      }),
+    state: ctx => {
+      const l = ctx.line.line
+      return l.closed.value || l.tension.value !== 0 || l.bezier.value ? 'disabled' : 'enabled'
+    },
+    run: ctx => {
+      const ref = head(ctx)
+      ref.value = { ...ref.value, show: !shown(ctx) }
+    },
+  }
 }
 
 /**
@@ -228,6 +260,8 @@ export const BUILTIN_TOOLBAR_ITEMS: Readonly<Record<string, EditableLineToolbarI
   delete: deleteItem,
   'toggle-closed': toggleClosedItem,
   'projection-scope': projectionScopeItem,
+  'arrow-start': arrowHeadItem('start'),
+  'arrow-end': arrowHeadItem('end'),
 }
 
 /** The default bar — reproduces the v1 toolbar (six aligns, divider, delete). */
