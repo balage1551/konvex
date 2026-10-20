@@ -158,3 +158,108 @@ export function simplifyPoints(
   const distance = threshold?.distance ?? DEFAULT_SIMPLIFICATION.distance
   return mergeClusters(removeNearCollinear(points, angle), distance)
 }
+
+// ---------------------------------------------------------------------------
+// End decorations. These work on Konva's *flat* `[x1, y1, x2, y2, …]` layout,
+// because their callers are a line's `points` and its draw function — the
+// latter runs every frame, so converting to `Vector2d[]` and back would be
+// waste. Segments are straight; tension and bezier are not considered.
+// ---------------------------------------------------------------------------
+
+/** Which end of a polyline: before its first point, or after its last. */
+export type PolylineEnd = 'start' | 'end'
+
+/** A place on a polyline and the direction it faces. */
+export interface PolylineAnchor {
+  x: number
+  y: number
+  /**
+   * Direction (degrees, as `rotation` takes it) pointing *out of* the line at that
+   * end: towards the last point for `'end'`, towards the first for `'start'`.
+   */
+  angle: number
+}
+
+/**
+ * The point `distance` back from one end, measured along the polyline, facing
+ * out of that end.
+ *
+ * The walk crosses vertices, so a distance longer than the terminal segment
+ * carries on around the corner. Zero-length segments are stepped over: a point
+ * duplicated onto an end has no direction of its own, and reading one off it
+ * would aim the anchor along the x axis whatever the line actually does.
+ *
+ * `null` when there is no such point — fewer than two distinct points, or a
+ * `distance` beyond the polyline's length.
+ */
+export function polylineAnchor(
+  flat: readonly number[],
+  end: PolylineEnd,
+  distance: number,
+): PolylineAnchor | null {
+  const n = Math.floor(flat.length / 2)
+  // Index `k` steps from the chosen end inwards.
+  const at = end === 'end' ? (k: number) => n - 1 - k : (k: number) => k
+  let remaining = Math.max(0, distance)
+  for (let k = 0; k + 1 < n; k++) {
+    const i = at(k) * 2
+    const j = at(k + 1) * 2
+    const dx = flat[i] - flat[j]
+    const dy = flat[i + 1] - flat[j + 1]
+    const len = Math.hypot(dx, dy)
+    if (len === 0) continue
+    if (remaining <= len) {
+      const t = remaining / len
+      return {
+        x: flat[i] - dx * t,
+        y: flat[i + 1] - dy * t,
+        angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+      }
+    }
+    remaining -= len
+  }
+  return null
+}
+
+/** Drop `distance` of length from the front of `flat`, cutting the segment it ends in. */
+function cutFront(flat: readonly number[], distance: number): number[] {
+  const n = Math.floor(flat.length / 2)
+  let remaining = distance
+  for (let k = 0; k + 1 < n; k++) {
+    const i = k * 2
+    const dx = flat[i + 2] - flat[i]
+    const dy = flat[i + 3] - flat[i + 1]
+    const len = Math.hypot(dx, dy)
+    if (remaining < len) {
+      const t = remaining / len
+      return [flat[i] + dx * t, flat[i + 1] + dy * t, ...flat.slice(i + 2, n * 2)]
+    }
+    remaining -= len
+  }
+  return []
+}
+
+/** Reverse the point order of a flat list, keeping each `x, y` pair intact. */
+function reversePairs(flat: readonly number[]): number[] {
+  const out: number[] = []
+  for (let i = Math.floor(flat.length / 2) - 1; i >= 0; i--) out.push(flat[i * 2], flat[i * 2 + 1])
+  return out
+}
+
+/**
+ * Shorten a polyline by `start` at its first end and `end` at its last, both
+ * measured along it. Returns the input itself when there is nothing to cut, and
+ * `[]` when the two cuts meet or cross — there is no line left to draw.
+ */
+export function trimPolyline(flat: readonly number[], start: number, end: number): readonly number[] {
+  const s = Math.max(0, start)
+  const e = Math.max(0, end)
+  if (s === 0 && e === 0) return flat
+  let length = 0
+  for (let i = 2; i + 1 < flat.length; i += 2) {
+    length += Math.hypot(flat[i] - flat[i - 2], flat[i + 1] - flat[i - 1])
+  }
+  if (s + e >= length) return []
+  const front = s > 0 ? cutFront(flat, s) : [...flat]
+  return e > 0 ? reversePairs(cutFront(reversePairs(front), e)) : front
+}
