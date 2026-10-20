@@ -524,6 +524,25 @@
                     alt add: {{ asEditableLine.addOnAltClick.value }}
                   </v-btn>
                   <br />
+                  <span class="muted">arrowheads (size/ratio/offset apply to both ends):</span>
+                  <br />
+                  <v-btn size="small" class="m-btn" @click="cycleHead(asEditableLine.startHead)">
+                    start: {{ headLabel(asEditableLine.startHead.value) }}
+                  </v-btn>
+                  <v-btn size="small" class="m-btn" @click="cycleHead(asEditableLine.endHead)">
+                    end: {{ headLabel(asEditableLine.endHead.value) }}
+                  </v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'size', 2, 10)">size +2</v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'size', -2, 10)">size −2</v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'ratio', 0.25, 1)">ratio +.25</v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'ratio', -0.25, 1)">ratio −.25</v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'offset', 2, 0)">offset +2</v-btn>
+                  <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'offset', -2, 0)">offset −2</v-btn>
+                  <span class="muted">
+                    size {{ asEditableLine.endHead.value.size ?? 10 }} · ratio {{ asEditableLine.endHead.value.ratio ?? 1 }} ·
+                    offset {{ asEditableLine.endHead.value.offset ?? 0 }}
+                  </span>
+                  <br />
                   <span class="muted">scalable parts:</span>
                   <br />
                   <v-btn
@@ -741,7 +760,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, type Ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { VBtn, VCol, VContainer, VRow, VSlider } from 'vuetify/components'
 import ComponentHeader from './components/ComponentHeader.vue'
 import PmiSplitPane from './components/PmiSplitPane.vue'
@@ -780,6 +799,7 @@ import {
   EditableLine,
   EditableLineToolbar,
   type PointMovement,
+  type ArrowHeadConfig,
   type ScalableComponents,
   type ToolbarItemSpec,
 } from '@balage1551/konvex-editable-line'
@@ -845,8 +865,23 @@ const SCALABLE_PRESETS: { label: string; value: ScalableComponents }[] = [
   { label: 'none', value: 'none' },
   { label: 'line', value: ['line'] },
   { label: 'line+marker', value: ['line', 'marker'] },
-  { label: 'all parts', value: ['line', 'marker', 'helper'] },
+  { label: 'line+decoration', value: ['line', 'decoration'] },
+  { label: 'all parts', value: ['line', 'marker', 'helper', 'decoration'] },
 ]
+// Arrowhead controls: a shape cycle (with "off") and shared size/ratio/offset steps.
+const HEAD_SHAPES = ['off', 'triangle', 'open', 'diamond', 'circle'] as const
+function headLabel(h: ArrowHeadConfig): string {
+  return h.show === false ? 'off' : typeof h.shape === 'function' ? 'custom' : (h.shape ?? 'triangle')
+}
+function cycleHead(head: Ref<ArrowHeadConfig>): void {
+  const next = cycle(HEAD_SHAPES, headLabel(head.value))
+  head.value = next === 'off' ? { ...head.value, show: false } : { ...head.value, show: true, shape: next }
+}
+function tweakHeads(el: EditableLine, key: 'size' | 'ratio' | 'offset', by: number, def: number): void {
+  for (const head of [el.startHead, el.endHead]) {
+    head.value = { ...head.value, [key]: Math.max(key === 'offset' ? 0 : 0.25, (head.value[key] ?? def) + by) }
+  }
+}
 function scalableLabel(v: ScalableComponents): string {
   return v === 'all' ? 'all' : v === 'none' ? 'none' : v.join('+')
 }
@@ -1011,6 +1046,8 @@ const toolbarItems: ToolbarItemSpec[] = [
   'straighten',
   'simplify',
   'toggle-closed',
+  'arrow-start',
+  'arrow-end',
   {
     id: 'log-coords',
     label: 'Log selected coords',
@@ -1022,6 +1059,8 @@ const toolbarItems: ToolbarItemSpec[] = [
   'delete',
 ]
 
+/** Radius of the demo EditableLine's end nodes, and so of its heads' offset. */
+const NODE_RADIUS = 12
 function addEditableLine(): void {
   const p = randPos()
   const el = new EditableLine({
@@ -1043,7 +1082,28 @@ function addEditableLine(): void {
     // host by deferring the empty-canvas deselect; see onStageReady.
     addOnDblClick: true, // dblclick on empty canvas → add a point (snaps to the line if near)
     breakOnDblClick: true, // dblclick on the line → insert a point at the projection
+    // An arrow from a circular node at the start to one at the end: `offset` is
+    // the end circles' radius, so the tip lands on the circle instead of under it.
+    endHead: { shape: 'triangle', size: 14, ratio: 1.5, offset: NODE_RADIUS },
+    startHead: { show: false, offset: NODE_RADIUS },
   })
+  // The end nodes: decoration only, kept on the first/last point. Inserted right
+  // above the line, so the heads and the editing handles still draw over them.
+  const ends = [0, 1].map(() =>
+    new KonvexCircle({ radius: NODE_RADIUS, listening: false, fill: '#26c6da33', stroke: { color: '#26c6da', width: 2 } }),
+  )
+  ends.forEach((c, i) => el.add(c, 1 + i))
+  watch(
+    el.pointInfos,
+    infos => {
+      const first = infos[0]
+      const last = infos[infos.length - 1]
+      ends[0].visible.value = ends[1].visible.value = infos.length >= 2
+      if (first) ends[0].position.value = { x: first.x, y: first.y }
+      if (last) ends[1].position.value = { x: last.x, y: last.y }
+    },
+    { immediate: true },
+  )
   // The toolbar's scope item sets it on the line; mirror it back so the readout
   // above stays truthful whichever control was used.
   watch(el.projectionScope, s => {
