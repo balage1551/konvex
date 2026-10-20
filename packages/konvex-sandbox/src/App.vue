@@ -524,13 +524,21 @@
                     alt add: {{ asEditableLine.addOnAltClick.value }}
                   </v-btn>
                   <br />
-                  <span class="muted">arrowheads (size/ratio/offset apply to both ends):</span>
+                  <span class="muted">arrowheads (every point/size/ratio/offset apply to both ends):</span>
                   <br />
                   <v-btn size="small" class="m-btn" @click="cycleHead(asEditableLine.startHead)">
                     start: {{ headLabel(asEditableLine.startHead.value) }}
                   </v-btn>
                   <v-btn size="small" class="m-btn" @click="cycleHead(asEditableLine.endHead)">
                     end: {{ headLabel(asEditableLine.endHead.value) }}
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    class="m-btn"
+                    :color="asEditableLine.endHead.value.atEveryPoint ? 'amber' : '#888888'"
+                    @click="toggleEveryPoint(asEditableLine)"
+                  >
+                    every point: {{ !!asEditableLine.endHead.value.atEveryPoint }}
                   </v-btn>
                   <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'size', 2, 10)">size +2</v-btn>
                   <v-btn size="small" class="m-btn" @click="tweakHeads(asEditableLine, 'size', -2, 10)">size −2</v-btn>
@@ -876,6 +884,10 @@ function headLabel(h: ArrowHeadConfig): string {
 function cycleHead(head: Ref<ArrowHeadConfig>): void {
   const next = cycle(HEAD_SHAPES, headLabel(head.value))
   head.value = next === 'off' ? { ...head.value, show: false } : { ...head.value, show: true, shape: next }
+}
+function toggleEveryPoint(el: EditableLine): void {
+  const on = !el.endHead.value.atEveryPoint
+  for (const head of [el.startHead, el.endHead]) head.value = { ...head.value, atEveryPoint: on }
 }
 function tweakHeads(el: EditableLine, key: 'size' | 'ratio' | 'offset', by: number, def: number): void {
   for (const head of [el.startHead, el.endHead]) {

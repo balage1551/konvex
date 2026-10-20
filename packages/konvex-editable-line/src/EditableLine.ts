@@ -34,9 +34,16 @@ function positiveOr(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-/** What one end's arrowhead should look like right now; `null` = not drawn. */
-interface HeadPlan {
+/** One drawn head: the point it belongs to, and where it sits. */
+interface HeadPlacement {
+  index: number
   anchor: PolylineAnchor
+}
+
+/** What one end's arrowheads should look like right now; `null` = none drawn. */
+interface HeadPlan {
+  /** The terminal head (when it fits) and, with `atEveryPoint`, one per internal point. */
+  placements: HeadPlacement[]
   shape: 'triangle' | 'open' | 'diamond' | 'circle' | ArrowHeadFactory
   /** Head extent along and across the line, in the head's own frame. */
   size: number
@@ -128,9 +135,17 @@ export class EditableLine extends KonvexGroup {
   readonly endHead: Ref<ArrowHeadConfig>
 
   private readonly _cfg: EditableLineConfig
-  /** Holds one group per end; each group carries that end's head node. */
+  /** Holds one group per end; each carries that end's heads, keyed by point index. */
   private readonly _headGroup: KonvexGroup
-  private readonly _heads: Record<PolylineEnd, { group: KonvexGroup; node?: KonvexContent }>
+  private readonly _heads: Record<
+    PolylineEnd,
+    {
+      group: KonvexGroup
+      heads: Map<number, { group: KonvexGroup; node: KonvexContent }>
+      /** What the current nodes were built as; see {@link headKind}. */
+      kind: unknown[]
+    }
+  >
   private readonly _handleGroup: KonvexGroup
   private readonly _assistGroup: KonvexGroup
   private readonly _assistMarker: KonvexCircle
@@ -247,7 +262,10 @@ export class EditableLine extends KonvexGroup {
     this.endHead = ref(config.endHead ?? { show: false }) as Ref<ArrowHeadConfig>
     this._headGroup = new KonvexGroup()
     this.add(this._headGroup)
-    this._heads = { start: { group: new KonvexGroup() }, end: { group: new KonvexGroup() } }
+    this._heads = {
+      start: { group: new KonvexGroup(), heads: new Map(), kind: [] },
+      end: { group: new KonvexGroup(), heads: new Map(), kind: [] },
+    }
     this._headGroup.add(this._heads.start.group)
     this._headGroup.add(this._heads.end.group)
 
@@ -368,21 +386,6 @@ export class EditableLine extends KonvexGroup {
         this.applyScalable()
         this.rebuildHandles()
       })
-      // A head's node is rebuilt only when what it *is* changes — its built-in
-      // shape, or for a factory the inputs the factory was called with. Everything
-      // else (placement, size, paint) is applied to the existing node below.
-      for (const end of ['start', 'end'] as const) {
-        const cfg = (): ArrowHeadConfig => this.headConfig(end).value
-        watch(
-          [
-            () => cfg().shape ?? 'triangle',
-            () => (typeof cfg().shape === 'function' ? positiveOr(cfg().size, DEFAULT_HEAD_SIZE) : 0),
-            () => (typeof cfg().shape === 'function' ? positiveOr(cfg().ratio, 1) : 0),
-          ],
-          () => this.rebuildHead(end),
-          { immediate: true },
-        )
-      }
       // The plan is a pure read of everything a head depends on; applying it is a
       // separate, untracked step, so building it cannot subscribe to the nodes it
       // writes.
@@ -690,40 +693,55 @@ export class EditableLine extends KonvexGroup {
     return !!target && this._headGroup.konvaRoot().isAncestorOf(target)
   }
 
-  /** Replace an end's head node with a fresh one of the configured shape. */
-  private rebuildHead(end: PolylineEnd): void {
-    const slot = this._heads[end]
-    slot.node?.destroy()
-    slot.node = undefined
+  /**
+   * What a head's node *is*: its built-in shape, or for a factory the factory and
+   * the inputs it was called with. Only a change here rebuilds; placement, size
+   * and paint go onto the existing node, so a drag never rebuilds one.
+   */
+  private headKind(head: HeadPlan): unknown[] {
+    return typeof head.shape === 'function' ? [head.shape, head.size, head.width] : [head.shape]
+  }
+
+  /** A head's node, in its own placement group, for the head at point `index`. */
+  private buildHead(end: PolylineEnd, index: number): { group: KonvexGroup; node: KonvexContent } {
     const cfg = this.headConfig(end).value
     const shape = cfg.shape ?? 'triangle'
+    let node: KonvexContent
     if (typeof shape === 'function') {
       const size = positiveOr(cfg.size, DEFAULT_HEAD_SIZE)
-      slot.node = shape({ end, line: this, size, width: size / positiveOr(cfg.ratio, 1) })
+      node = shape({ end, index, line: this, size, width: size / positiveOr(cfg.ratio, 1) })
     } else if (shape === 'circle') {
-      slot.node = new KonvexEllipse()
+      node = new KonvexEllipse()
     } else {
-      slot.node = new KonvexLine({ closed: shape !== 'open' })
+      node = new KonvexLine({ closed: shape !== 'open' })
     }
-    slot.group.add(slot.node)
-    this.applyHeads(this.planHeads())
+    const group = new KonvexGroup()
+    group.add(node)
+    this._heads[end].group.add(group)
+    return { group, node }
   }
 
   /**
-   * Work out both heads and the trims under them, from the configs, the geometry,
-   * the line's paint and the zoom.
+   * Work out every head and the trims under the terminal ones, from the configs,
+   * the geometry, the line's paint and the zoom.
    *
    * A head needs an open, straight line: a closed one has no ends, and on a curve
    * the straight-segment geometry would put the head off the drawn path. When the
-   * two heads would not both fit, neither is drawn — but the line still stops at
-   * the offsets, so it keeps meeting the objects on its ends rather than running
-   * under them.
+   * two terminal heads would not both fit, neither is drawn — but the line still
+   * stops at the offsets, so it keeps meeting the objects on its ends rather than
+   * running under them.
+   *
+   * With `atEveryPoint`, each internal point repeats the head on its own segment:
+   * an end head on the segment arriving at the point, a start head on the one
+   * leaving it, both held `offset` clear of the point. The line runs through
+   * these, so they cut nothing, and one whose segment is too short is skipped.
    */
   private planHeads(): HeadsPlan {
     const none: HeadsPlan = { start: null, end: null, trimStart: 0, trimEnd: 0 }
     const line = this.line
     if (line.closed.value || line.tension.value !== 0 || line.bezier.value) return none
     const flat = line.points.value
+    const n = Math.floor(flat.length / 2)
     const scalable = this.isScalable('decoration')
     const strokeScale = this.isScalable('line')
     // A constant-size head is `size` screen pixels, which is this much of the line.
@@ -739,17 +757,27 @@ export class EditableLine extends KonvexGroup {
 
     const ends = (['start', 'end'] as const).map(end => {
       const cfg = this.headConfig(end).value
-      if (!(cfg.show ?? true)) return { head: null, offset: 0, cut: 0 }
+      if (!(cfg.show ?? true)) return { head: null, offset: 0, cut: 0, terminal: null }
       const shape = cfg.shape ?? 'triangle'
       const size = positiveOr(cfg.size, DEFAULT_HEAD_SIZE)
       const offset = positiveOr(cfg.offset, 0)
       const trim = cfg.trim ?? (shape === 'open' ? 'tip' : 'base')
       const cut = trim === 'none' ? 0 : offset + (trim === 'base' ? size / zoom : 0)
       const anchor = polylineAnchor(flat, end, offset)
-      if (!anchor) return { head: null, offset, cut }
+      const terminal = anchor && { index: end === 'start' ? 0 : n - 1, anchor }
+      const placements: HeadPlacement[] = []
+      if (cfg.atEveryPoint) {
+        for (let i = 1; i + 1 < n; i++) {
+          // The one segment this point's head sits on, as its own two-point line.
+          const k = end === 'end' ? i - 1 : i
+          const seg = flat.slice(k * 2, k * 2 + 4)
+          const a = polylineAnchor(seg, end, offset)
+          if (a) placements.push({ index: i, anchor: a })
+        }
+      }
       const filled = shape !== 'open'
       const head: HeadPlan = {
-        anchor,
+        placements,
         shape,
         size,
         width: size / positiveOr(cfg.ratio, 1),
@@ -764,46 +792,75 @@ export class EditableLine extends KonvexGroup {
             : baseStroke,
         strokeScale,
       }
-      return { head, offset, cut }
+      return { head, offset, cut, terminal }
     })
     const [s, e] = ends
-    if (s.cut + e.cut >= line.pixelLength.value) {
-      return { start: null, end: null, trimStart: s.offset, trimEnd: e.offset }
-    }
-    return { start: s.head, end: e.head, trimStart: s.cut, trimEnd: e.cut }
+    const fits = s.cut + e.cut < line.pixelLength.value
+    for (const x of ends) if (fits && x.head && x.terminal) x.head.placements.push(x.terminal)
+    return fits
+      ? { start: s.head, end: e.head, trimStart: s.cut, trimEnd: e.cut }
+      : { start: s.head, end: e.head, trimStart: s.offset, trimEnd: e.offset }
   }
 
   private applyHeads(plan: HeadsPlan): void {
     this.line.trimStart.value = plan.trimStart
     this.line.trimEnd.value = plan.trimEnd
     for (const end of ['start', 'end'] as const) {
-      const { group, node } = this._heads[end]
+      const slot = this._heads[end]
       const head = plan[end]
-      group.visible.value = !!head
-      if (!head || !node) continue
-      group.position.value = { x: head.anchor.x, y: head.anchor.y }
-      group.rotation.value = head.anchor.angle
-      group.scalable.value = head.scalable
-      // A factory's node is the host's own: placed, never restyled or reshaped.
-      if (typeof head.shape === 'function') continue
-      const { size, width } = head
-      if (node instanceof KonvexEllipse) {
-        node.position.value = { x: -size / 2, y: 0 }
-        node.radiusX.value = size / 2
-        node.radiusY.value = width / 2
-      } else if (node instanceof KonvexLine) {
-        const w = width / 2
-        node.points.value =
-          head.shape === 'open'
-            ? [-size, w, 0, 0, -size, -w]
-            : head.shape === 'diamond'
-              ? [0, 0, -size / 2, w, -size, 0, -size / 2, -w]
-              : [0, 0, -size, w, -size, -w]
-      } else continue
-      node.fill.value = head.fill
-      node.stroke.value = head.stroke
-      node.strokeScaleEnabled.value = head.strokeScale
+      // Decided here rather than by a watch of its own: two watches flush in the
+      // order they were triggered, so the plan could be applied to the old nodes
+      // before a separate rebuild had cleared them.
+      if (head) {
+        const kind = this.headKind(head)
+        if (kind.length !== slot.kind.length || kind.some((k, i) => k !== slot.kind[i])) {
+          for (const h of slot.heads.values()) h.group.destroy()
+          slot.heads.clear()
+          slot.kind = kind
+        }
+      }
+      const wanted = new Set(head?.placements.map(p => p.index))
+      // Reconcile by point index: heads whose point lost its head go, new ones are
+      // built, and the rest are only moved — so a drag never rebuilds a node.
+      for (const [index, h] of slot.heads) {
+        if (!wanted.has(index)) {
+          h.group.destroy()
+          slot.heads.delete(index)
+        }
+      }
+      slot.group.visible.value = !!head?.placements.length
+      if (!head) continue
+      for (const { index, anchor } of head.placements) {
+        let h = slot.heads.get(index)
+        if (!h) slot.heads.set(index, (h = this.buildHead(end, index)))
+        h.group.position.value = { x: anchor.x, y: anchor.y }
+        h.group.rotation.value = anchor.angle
+        h.group.scalable.value = head.scalable
+        this.shapeHead(h.node, head)
+      }
     }
+  }
+
+  /** Size and paint a built-in head. A factory's node is the host's own: left alone. */
+  private shapeHead(node: KonvexContent, head: HeadPlan): void {
+    if (typeof head.shape === 'function') return
+    const { size, width } = head
+    if (node instanceof KonvexEllipse) {
+      node.position.value = { x: -size / 2, y: 0 }
+      node.radiusX.value = size / 2
+      node.radiusY.value = width / 2
+    } else if (node instanceof KonvexLine) {
+      const w = width / 2
+      node.points.value =
+        head.shape === 'open'
+          ? [-size, w, 0, 0, -size, -w]
+          : head.shape === 'diamond'
+            ? [0, 0, -size / 2, w, -size, 0, -size / 2, -w]
+            : [0, 0, -size, w, -size, -w]
+    } else return
+    node.fill.value = head.fill
+    node.stroke.value = head.stroke
+    node.strokeScaleEnabled.value = head.strokeScale
   }
 
   private effectiveMovable(i: number): PointMovement {

@@ -155,6 +155,7 @@ el.startHead.value = { shape: 'open' }  // add one at the start too
 | `size` | `number` | `10` | Extent along the line. World units while `'decoration'` scales, screen pixels when it does not. |
 | `ratio` | `number` | `1` | Length ÷ width. `2` makes a head twice as long as it is wide. Applies to every shape. |
 | `offset` | `number` | `0` | Gap from the end point to the tip, along the line, in world units — the radius of a circular object sitting on the end point. |
+| `atEveryPoint` | `boolean` | `false` | Repeat the head at every internal point too — see below. |
 | `trim` | `'base' \| 'tip' \| 'none'` | `'base'` (`'tip'` for `open`) | Where the drawn line stops: at the back of the head, at its tip, or not at all. `offset` is always part of the cut except for `'none'`. |
 | `fill` | `FillInput` | line's stroke colour | Filled shapes only by default; `open` has none. |
 | `stroke` | `Stroke` | none / line's stroke | Merged field by field over the line's colour, width, cap and join, undashed. The filled shapes draw no stroke unless you give one, so a thick line does not fatten them. |
@@ -174,6 +175,19 @@ projection and the handles keep the real vertices.
 two would not both fit — their cuts meet or cross — neither is drawn, while the
 line still stops at the offsets, so it keeps meeting the objects on its ends.
 
+**Heads at every point.** With `atEveryPoint`, each internal point repeats the
+head on its own segment: an `endHead` on the segment *arriving* at the point,
+pointing forward, and a `startHead` on the segment *leaving* it, pointing back —
+set both for double-headed segments. Each is held `offset` clear of its point,
+measured along that segment only, and one whose segment is shorter than `offset`
+is skipped. The line runs through these heads: `trim` applies to the terminal head
+only. The fit rule above concerns the terminal heads alone, so internal ones stay
+when the end ones are dropped.
+
+```ts
+endHead: { shape: 'triangle', offset: 12, atEveryPoint: true }  // → → → along every segment
+```
+
 **Custom heads.** A factory returns any konvex shape or group, drawn in a frame
 whose origin is the tip and whose +x axis points the way the head points, so the
 head lies along −x from `0` to `−size`:
@@ -186,9 +200,11 @@ endHead: {
 }
 ```
 
-EL places and rotates the frame; the factory's node is never restyled. It is
-called again only when `shape`, `size` or `ratio` change — moving points or
-changing `offset` reuses it.
+EL places and rotates the frame; the factory's node is never restyled. It is called
+once per head — the context's `index` names the point the head belongs to, as of
+when it was built — and again only when `shape`, `size` or `ratio` change. Moving
+points or changing `offset` reuses the node; a point added or removed builds or
+drops just its own head.
 
 ---
 
@@ -378,7 +394,7 @@ Three things worth knowing:
 - `ScalableComponent` = `'line' | 'marker' | 'helper' | 'decoration'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
 - `ArrowHeadConfig`, `ArrowHeadBuiltin` = `'triangle' | 'open' | 'diamond' | 'circle'`,
   `ArrowHeadTrim` = `'base' | 'tip' | 'none'`, `ArrowHeadFactory` =
-  `(ctx: ArrowHeadContext) => KonvexContent`, `ArrowHeadContext` = `{ end, line, size, width }` —
+  `(ctx: ArrowHeadContext) => KonvexContent`, `ArrowHeadContext` = `{ end, index, line, size, width }` —
   see [Arrowheads](#arrowheads).
 - `EditableLinePointChange` = `{ index, point, count }`; `EditableLinePointMove` =
   `{ index, point, from }`; `EditableLinePointsReplaced` = `{ count }` —

@@ -102,8 +102,10 @@ export interface RubberBandConfig {
 
 /** What a custom arrowhead factory is told about the head it should build. */
 export interface ArrowHeadContext {
-  /** Which end the head decorates. */
+  /** Which end's config the head comes from. */
   end: PolylineEnd
+  /** The point the head belongs to: `0` / last for the terminal heads, else an internal one. */
+  index: number
   /** The line being decorated. */
   line: EditableLine
   /** Extent along the line (the resolved {@link ArrowHeadConfig.size}). */
@@ -155,6 +157,15 @@ export interface ArrowHeadConfig {
    * `'tip'` for `open`, whose arms would otherwise stand clear of the line.
    */
   trim?: ArrowHeadTrim
+  /**
+   * Repeat the head at every internal point too (default `false`), on that
+   * point's own segment: an end head on the segment arriving at the point,
+   * pointing forward; a start head on the one leaving it, pointing back. Each is
+   * held `offset` clear of its point. The line runs through them — `trim`
+   * applies to the terminal head only — and one whose segment is shorter than
+   * `offset` is skipped.
+   */
+  atEveryPoint?: boolean
   /** Fill; defaults to the line's stroke colour for the filled shapes, none for `open`. */
   fill?: FillInput
   /**
