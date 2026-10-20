@@ -4,7 +4,8 @@ An interactively editable polyline built on [`@balage1551/konvex`](https://www.n
 
 Features: per-point movement (free / axis-locked / pinned) and selectability,
 point handles, projection assist, rubber-band box selection, straighten and
-simplify operations, and a configurable toolbar (`EditableLineToolbar`).
+simplify operations, arrowheads (built-in or custom, offset clear of objects on
+the end points), and a configurable toolbar (`EditableLineToolbar`).
 
 ## Documentation
 

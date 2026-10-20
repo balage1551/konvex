@@ -476,9 +476,16 @@ Members: `innerRadius`, `outerRadius`, `angle`, `clockwise`.
 
 ### `KonvexLine<T>`
 Config: `points?: number[]` (`[x1,y1,x2,y2,…]`, relative to the node), `tension?`,
-`closed?`, `bezier?`.
-Members: `points`, `tension`, `closed`, `bezier`; computed `pixelLength`,
-`scaledLength`, `pixelArea`, `scaledArea`.
+`closed?`, `bezier?`, `trimStart?`, `trimEnd?`.
+Members: `points`, `tension`, `closed`, `bezier`, `trimStart`, `trimEnd`; computed
+`pixelLength`, `scaledLength`, `pixelArea`, `scaledArea`.
+
+`trimStart` / `trimEnd` leave that much length (local units, measured along the
+line) undrawn at each end. **Render-only**: `points`, `project`, `pixelLength` and
+`clientRect` keep the real vertices; only the stroke — and with it the hit region —
+stops short. Negative or non-finite values read back as `0`. Applies to an open,
+straight line: with `closed`, `tension` or `bezier` set the line is drawn whole,
+and `KonvexArrow` ignores it. While both are `0`, Konva's own draw runs untouched.
 Methods:
 - `worldPoints(): Vector2d[]` — points in parent/world space.
 - `project(point, scope?): LineProjection | undefined` — closest point on the
@@ -596,6 +603,19 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
   then merge dense clusters to their centroid.
 - `SimplificationThreshold` `{ angle?: number (deg, default 5), distance?: number (default 10) }`;
   `DEFAULT_SIMPLIFICATION` holds the resolved defaults.
+
+These two take Konva's flat `[x1, y1, x2, y2, …]` layout and treat segments as
+straight:
+
+- `polylineAnchor(flat, end, distance): PolylineAnchor | null` — the point
+  `distance` back from `end` (`'start' | 'end'`), measured along the line and
+  walking round corners, as `{ x, y, angle }`. `angle` (degrees) faces *out of*
+  that end. Zero-length segments are stepped over, so a duplicated end point
+  cannot set the direction. `null` with fewer than two distinct points or a
+  `distance` beyond the length.
+- `trimPolyline(flat, start, end): readonly number[]` — the line shortened by
+  `start` and `end` along its length. Returns the input when both are `0`, and
+  `[]` when the cuts meet.
 
 ---
 

@@ -91,7 +91,8 @@ Extends `KonvexGroupConfig`. Fields:
 | `dragConstraintLine` | `DragConstraintLineConfig` | — | Axis guide styling (`show`, `color`, `width`, `radius`). |
 | `rubberBand` | `RubberBandConfig` | — | `enabled` (default `true`), `fill`, `stroke`. |
 | `simplification` | `SimplificationThreshold` | `{ angle:5, distance:10 }` | Thresholds for `simplify()`. |
-| `scalableComponents` | `'all' \| 'none' \| ('line'\|'marker'\|'helper')[]` | `['line']` | Which parts scale with zoom. |
+| `startHead` / `endHead` | `ArrowHeadConfig` | — | Arrowhead before the first / after the last point. See [Arrowheads](#arrowheads). |
+| `scalableComponents` | `'all' \| 'none' \| ('line'\|'marker'\|'helper'\|'decoration')[]` | `['line', 'decoration']` | Which parts scale with zoom. `'decoration'` is the arrowheads. |
 | `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. Splitting a segment only makes sense on the body, so this is inert unless `projectionScope` contains `'internal'`. |
 | `addOnDblClick` | `boolean` | — | Double-click the stage adds a point, where `projectionScope` says (snapped onto the line if within `snapThreshold`). |
 | `addOnAltClick` | `boolean` | — | Alt+click commits the assist (insert / extend). |
@@ -108,6 +109,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `assistShow` | `Ref<AssistShow>` | Live assist visibility mode. |
 | `projectionScope` | `Ref<LineProjectionScope>` | Live **set** of the parts a new point may land on — any subset of `'start'` / `'internal'` / `'end'`, defaulting to all three. Holds the resolved set: seed it by name via `assist.scope`, assign a set (or a `LINE_PROJECTION_SCOPES` entry) at runtime. Every add gesture and the assist preview read this one value, so they cannot disagree. **Normalises on write** (see [`lineProjectionParts`](./konvex.md#konvexline)): parts de-duplicated and ordered, an unusable value read as `'anywhere'`, and only an explicit `[]` / `'nowhere'` left empty. |
 | `snapThreshold` | `Ref<number>` | Live: distance within which an inserted point snaps onto the line. Seeded from `assist.snapThreshold`. |
+| `startHead` / `endHead` | `Ref<ArrowHeadConfig>` | Live arrowhead config. Replace the object or set one field (`endHead.value.show = false`) — both apply. Unconfigured, it holds `{ show: false }`, so setting `show` alone gives the default triangle. |
 | `scalableComponents` | `Ref<ScalableComponents>` | Live zoom-scaling set. |
 | `defaultMovable` | `Ref<PointMovement>` | Live line-wide movement default. |
 | `defaultSelectable` | `Ref<boolean>` | Live line-wide selectability default. |
@@ -129,6 +131,64 @@ Extends `KonvexGroupConfig`. Fields:
 | `simplify(threshold?)` | Simplify the whole polyline in place. Endpoints and `movable: false` points keep their exact positions (each run between pins is simplified on its own) and pinned points keep their overrides; the selection and every other override are cleared, since indices change. No-op for < 3 points. |
 | `setPointOptions(index, options)` | Set/override per-point `movable`/`selectable`. |
 | `destroy()` | Tear down (also removes window/key listeners). |
+
+### Arrowheads
+
+Either end can carry a head. It points out of the line, along its terminal
+segment:
+
+```ts
+const el = new EditableLine({
+  points: [{ x: 0, y: 0 }, { x: 200, y: 0 }],
+  line: { stroke: { color: '#26c6da', width: 3 } },
+  endHead: { shape: 'triangle', size: 14, ratio: 1.5, offset: 12 },
+})
+el.startHead.value = { shape: 'open' }  // add one at the start too
+```
+
+`ArrowHeadConfig`:
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `show` | `boolean` | `true` | Drawn or not. The toolbar's arrow items flip only this, so the rest survives a hide. |
+| `shape` | `'triangle' \| 'open' \| 'diamond' \| 'circle' \| ArrowHeadFactory` | `'triangle'` | `open` is two strokes meeting at the tip (`—>`): no base and no fill, so it is not an unfilled triangle. `circle` becomes an ellipse at a ratio other than 1. |
+| `size` | `number` | `10` | Extent along the line. World units while `'decoration'` scales, screen pixels when it does not. |
+| `ratio` | `number` | `1` | Length ÷ width. `2` makes a head twice as long as it is wide. Applies to every shape. |
+| `offset` | `number` | `0` | Gap from the end point to the tip, along the line, in world units — the radius of a circular object sitting on the end point. |
+| `trim` | `'base' \| 'tip' \| 'none'` | `'base'` (`'tip'` for `open`) | Where the drawn line stops: at the back of the head, at its tip, or not at all. `offset` is always part of the cut except for `'none'`. |
+| `fill` | `FillInput` | line's stroke colour | Filled shapes only by default; `open` has none. |
+| `stroke` | `Stroke` | none / line's stroke | Merged field by field over the line's colour, width, cap and join, undashed. The filled shapes draw no stroke unless you give one, so a thick line does not fatten them. |
+
+The paint follows the line: change `line.strokeColor` and a default-filled head
+follows. Heads are part of the line for interaction — a right-click on one asks
+for the toolbar and Alt+click commits as it would on the line, and a host's
+click handler on the `EditableLine` sees clicks on them too.
+
+**Offsets are measured along the line**, so one longer than the terminal segment
+carries on around the corner. The shortening is **render-only**
+([`KonvexLine.trimStart` / `trimEnd`](./konvex.md#konvexline)): `points`,
+projection and the handles keep the real vertices.
+
+**When heads are not drawn.** On a closed line (no ends) and on a curved one
+(`tension` or `bezier` — the heads are placed on straight segments). And when the
+two would not both fit — their cuts meet or cross — neither is drawn, while the
+line still stops at the offsets, so it keeps meeting the objects on its ends.
+
+**Custom heads.** A factory returns any konvex shape or group, drawn in a frame
+whose origin is the tip and whose +x axis points the way the head points, so the
+head lies along −x from `0` to `−size`:
+
+```ts
+endHead: {
+  size: 12, ratio: 2,
+  shape: ({ size, width }) =>
+    new KonvexRect({ x: -size, y: -width / 2, width: size, height: width, fill: 'orange' }),
+}
+```
+
+EL places and rotates the frame; the factory's node is never restyled. It is
+called again only when `shape`, `size` or `ratio` change — moving points or
+changing `offset` reuses it.
 
 ---
 
@@ -174,7 +234,13 @@ const items: ToolbarItemSpec[] = [
 
 `align-h-start`, `align-h-center`, `align-h-end`,
 `align-v-start`, `align-v-center`, `align-v-end`,
-`straighten`, `simplify`, `toggle-closed`, `projection-scope`, `delete`.
+`straighten`, `simplify`, `toggle-closed`, `projection-scope`, `arrow-start`,
+`arrow-end`, `delete`.
+
+`arrow-start` / `arrow-end` show or hide that end's [arrowhead](#arrowheads). Only
+`show` flips, so a head comes back as it was; on a line with none configured they
+add the default triangle. They are disabled on a closed or curved line, where heads
+are never drawn.
 
 `projection-scope` cycles `line.projectionScope` through the named sets —
 `anywhere → internal → terminal → start → end` — i.e. where a newly added point
@@ -309,7 +375,11 @@ Three things worth knowing:
 - `HandleState` / `HandleStyle` — passed to / returned from a custom `handles.style(state)`.
   `defaultHandleStyle(state)` is the default styler (exported).
 - `HandleShow` = `'always' | 'whenSelected' | 'never'`; `AssistShow` = `'always' | 'onAlt' | 'never'`.
-- `ScalableComponent` = `'line' | 'marker' | 'helper'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
+- `ScalableComponent` = `'line' | 'marker' | 'helper' | 'decoration'`; `ScalableComponents` = `'all' | 'none' | ScalableComponent[]`.
+- `ArrowHeadConfig`, `ArrowHeadBuiltin` = `'triangle' | 'open' | 'diamond' | 'circle'`,
+  `ArrowHeadTrim` = `'base' | 'tip' | 'none'`, `ArrowHeadFactory` =
+  `(ctx: ArrowHeadContext) => KonvexContent`, `ArrowHeadContext` = `{ end, line, size, width }` —
+  see [Arrowheads](#arrowheads).
 - `EditableLinePointChange` = `{ index, point, count }`; `EditableLinePointMove` =
   `{ index, point, from }`; `EditableLinePointsReplaced` = `{ count }` —
   see [point events](#point-events).
