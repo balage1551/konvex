@@ -138,6 +138,14 @@
                           </tbody>
                         </table>
                       </div>
+                      <br />
+                      <span class="info muted"
+                        >Events (newest first)
+                        <span class="log-clear" title="clear the log" @click="clearEventLog(asEditableLine)">[clear]</span></span
+                      >
+                      <div class="pt-table-wrap event-log">
+                        <div v-for="(entry, i) in eventLogOf(asEditableLine)" :key="i">{{ entry }}</div>
+                      </div>
                     </template>
                   </template>
                   <span v-else class="info muted">Add a shape, then double-click it to select.</span>
@@ -810,6 +818,7 @@ import {
   type ArrowHeadConfig,
   type ScalableComponents,
   type ToolbarItemSpec,
+  type EditableLineEventMap,
 } from '@balage1551/konvex-editable-line'
 
 const kx = useTemplateRef<KonvexStageExpose>('kx')
@@ -854,6 +863,38 @@ const count = ref(0)
 
 // Editable lines show their handles only while host-selected (handles.show: whenSelected).
 const editableLines: EditableLine[] = []
+
+/** Each EditableLine's `point-*` events, newest first, for the readout. */
+const EVENT_LOG_SIZE = 100
+const eventLogs = new Map<EditableLine, Ref<string[]>>()
+const LOGGED_EVENTS: (keyof EditableLineEventMap)[] = [
+  'point-added',
+  'point-removed',
+  'point-moved',
+  'point-drag-start',
+  'point-moving',
+  'point-drag-end',
+  'points-replaced',
+]
+function logEvents(el: EditableLine): void {
+  const log = ref<string[]>([])
+  eventLogs.set(el, log)
+  // Numbers to one decimal, so a per-frame `point-moving` stays readable.
+  const fmt = (payload: unknown): string =>
+    JSON.stringify(payload, (_k, v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : v))
+  for (const name of LOGGED_EVENTS) {
+    el.events.on(name, payload => {
+      log.value = [`${name} ${fmt(payload)}`, ...log.value].slice(0, EVENT_LOG_SIZE)
+    })
+  }
+}
+function eventLogOf(el: EditableLine): string[] {
+  return eventLogs.get(el)?.value ?? []
+}
+function clearEventLog(el: EditableLine): void {
+  const log = eventLogs.get(el)
+  if (log) log.value = []
+}
 watch(selected, s => editableLines.forEach(el => (el.active.value = el === s)))
 
 const MOVE_CYCLE: PointMovement[] = ['free', 'x', 'y', false]
@@ -1123,6 +1164,7 @@ function addEditableLine(): void {
     updateProjection()
   })
   editableLines.push(el)
+  logEvents(el)
   register(el)
 }
 function addPath(): void {
@@ -1639,6 +1681,14 @@ function onStageReady(stage: KonvexStage): void {
   cursor: pointer;
   user-select: none;
   text-align: center;
+}
+.log-clear {
+  cursor: pointer;
+  color: #90caf9;
+}
+.event-log {
+  font-size: 0.8em;
+  white-space: nowrap;
 }
 .pt-table td.cell-btn:hover {
   background: #3a4a5a;
