@@ -1,16 +1,22 @@
-// The Toolbar Item framework for EditableLine. A toolbar item is a plain data
-// object: it says how to render itself, whether it is hidden/disabled/enabled
-// for the current selection, and what to do when activated. Builtins and custom
-// tools use the exact same shape, so the bar is fully pick / hide / reorder /
-// extend-able (see EditableLineToolbar-items.ts for the builtin registry).
-import type { Component, VNodeChild } from 'vue'
-import type { Vector2d } from '@balage1551/konvex'
+// The Toolbar Item framework for EditableLine: konvex's generic context toolbar,
+// specialised to a line. A toolbar item is a plain data object: it says how to
+// render itself, whether it is hidden/disabled/enabled for the current
+// selection, and what to do when activated. Builtins and custom tools use the
+// exact same shape, so the bar is fully pick / hide / reorder / extend-able (see
+// EditableLineToolbar-items.ts for the builtin registry).
+import type {
+  ContextToolbarItemRender,
+  ContextToolbarItemSpec,
+  ContextToolbarItemState,
+  KonvexContextToolbarItem,
+  Vector2d,
+} from '@balage1551/konvex'
 import type { PointInfo } from '../EditableLine-types'
 import type { EditableLineHit } from '../EditableLine-events'
 import type { EditableLine } from '../EditableLine'
 
 /** Three-state result of {@link EditableLineToolbarItem.state}. */
-export type ToolbarItemState = 'hidden' | 'disabled' | 'enabled'
+export type ToolbarItemState = ContextToolbarItemState
 
 /** What the item's callbacks see: the line plus the live selection context. */
 export interface EditableLineToolbarContext {
@@ -34,38 +40,13 @@ export interface EditableLineToolbarContext {
  * - `{ component, props? }` — any Vue control;
  * - `(ctx) => VNodeChild` — a render function (may vary with the selection).
  */
-export type ToolbarItemRender =
-  | string
-  | { icon: string; class?: string | string[] }
-  | { component: Component; props?: Record<string, unknown> }
-  | ((ctx: EditableLineToolbarContext) => VNodeChild)
+export type ToolbarItemRender = ContextToolbarItemRender<EditableLineToolbarContext>
 
 /** A single toolbar tool. `state`/`run` receive the live selection context. */
-export interface EditableLineToolbarItem {
-  /** Stable id — used for registry lookup, ordering and de-duplication. */
-  id: string
-  /** Accessible label / tooltip. */
-  label?: string
-  /** How to draw the item in the bar. */
-  render: ToolbarItemRender
-  /**
-   * Visibility + enablement for the current context. Return `'hidden'` to omit
-   * the item entirely, `'disabled'` to grey it out, `'enabled'` to allow it.
-   * Defaults to `'enabled'` when omitted.
-   */
-  state?: (ctx: EditableLineToolbarContext) => ToolbarItemState
-  /** The operation. Invoked only when {@link state} resolves to `'enabled'`. */
-  run?: (ctx: EditableLineToolbarContext) => void
-  /**
-   * Keep the bar open after {@link run} instead of dismissing it (default
-   * `false`). For mode toggles and cycles, where the point is to see the new
-   * state and possibly click again.
-   */
-  keepOpen?: boolean
-}
+export interface EditableLineToolbarItem extends KonvexContextToolbarItem<EditableLineToolbarContext> {}
 
 /**
  * An entry in a toolbar's item list: a builtin item id, the divider tokens
  * `'|'` / `'separator'`, or an inline {@link EditableLineToolbarItem}.
  */
-export type ToolbarItemSpec = EditableLineToolbarItem | string
+export type ToolbarItemSpec = ContextToolbarItemSpec<EditableLineToolbarContext>

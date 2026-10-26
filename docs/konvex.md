@@ -210,6 +210,7 @@ group.signals.on('child-removed', ({ child }) => …)
 | `destroy` | from `destroy()`, **before** the scope stops and the Konva node goes, so the object is still readable. A subtree teardown emits one per node, deepest first. |
 | `child-added` | a child joined this container, including a re-parent |
 | `child-removed` | a child left: `remove()`, a re-parent into another container, or the child destroying itself. A container's *own* teardown does **not** enumerate its children — the subtree reports itself through `destroy`. |
+| `context-request` | the node was right-clicked while its `contextRequest` is on — `{ node, pointerScreen, pointerWorld }`. See [`<KonvexContextToolbar>`](#konvexcontexttoolbar-component). |
 
 Signals don't bubble, and `on(...)`/`signals.on(...)` stay separate on purpose:
 one carries Konva's DOM events up the tree, the other carries konvex's own facts
@@ -291,7 +292,7 @@ reads the nearest ancestor's unless pinned by writing to it; see
 - `once(name | names, handler): () => void` — removed after the first delivery.
 - `bindTo(target, name | names, handler, { once? }): () => void` — the same, on another node, with this object's lifetime (inherited from `KonvexBase`).
 - `bindDom(target, type, handler, options?): () => void` — a DOM listener with this object's lifetime (`KonvexBase`).
-- `signals` — konvex's own emitter: `destroy`, plus `child-added`/`child-removed` on a container. See [Events](#events).
+- `signals` — konvex's own emitter: `destroy`, `context-request`, plus `child-added`/`child-removed` on a container. See [Events](#events).
 - Convenience handlers: `onClick`, `onDblClick`, `onContextMenu`, `onMouseDown/Up/Move/Enter/Leave/Over/Out`, `onWheel`, `onTap`, `onDblTap`, `onTouchStart/Move/End/Enter/Leave/Over/Out`, `onPointerDown/Up/Move/Enter/Leave/Over/Out`, `onPointerClick`, `onPointerDblClick`, `onGotPointerCapture`, `onLostPointerCapture`, `onDragStart/Move/End`, `onTransformStart/Transform/TransformEnd` — one per entry in [`KonvexEventMap`](#value-types), each with `event.evt` typed.
   The `transform*` trio comes from a `Konva.Transformer` the node is attached to;
   unlike the drag events these do **not** bubble, so bind them on the transformed
@@ -415,6 +416,65 @@ const kx = shallowRef<KonvexStageExpose>()
 | `zoomToFit()` / `zoomToFitX()` / `zoomToFitY()` / `resetZoom()` | Fit / reset. |
 | `scrollTo(x, y)` / `scrollBy(dx, dy)` | Scroll. |
 | `screenToWorld(p)` / `worldToScreen(p)` | Coordinate conversion. |
+
+---
+
+## `<KonvexContextToolbar>` component
+
+A right-click popup toolbar for any node: a row of items shown at the pointer,
+dismissed on an outside click or Escape. `EditableLineToolbar` is this component
+specialised to a line.
+
+A node asks for it by turning on `contextRequest` (config or ref, default
+`false`). While on, a right-click on the node suppresses the browser's menu,
+stops the event bubbling to ancestors, and emits a `context-request` signal with
+`{ node, pointerScreen, pointerWorld }` — `pointerWorld` in the node's layer,
+which on the world layer is the world coordinate.
+
+```vue
+<script setup lang="ts">
+import { KonvexCircle, KonvexContextToolbar, type KonvexContextToolbarItem, type Vector2d } from '@balage1551/konvex'
+
+const junction = new KonvexCircle({ radius: 8, fill: '#ffd54f', contextRequest: true })
+
+interface JunctionCtx { node: KonvexCircle; at: Vector2d | null }
+const items: KonvexContextToolbarItem<JunctionCtx>[] = [
+  { id: 'detach', label: 'Detach', render: 'mdi-link-off', run: ({ node }) => detach(node) },
+  {
+    id: 'remove',
+    label: 'Remove',
+    render: { icon: 'mdi-trash-can', class: 'kxtb-icon-danger' },
+    state: ({ node }) => (canRemove(node) ? 'enabled' : 'disabled'),
+    run: ({ node }) => node.destroy(),
+  },
+]
+</script>
+
+<template>
+  <KonvexContextToolbar :node="junction" :items="items" :context="req => ({ node: junction, at: req.pointerWorld })" />
+</template>
+```
+
+| Prop | Type | |
+| --- | --- | --- |
+| `context` | `(request) => Ctx` | Builds what the items see from the request that opened the bar. Re-read while the bar is open, so items track live state. |
+| `items` | `ContextToolbarItemSpec<Ctx>[]` | Ordered items: inline items, `'|'` / `'separator'` dividers, or ids from `builtins`. |
+| `builtins` | `Record<string, KonvexContextToolbarItem<Ctx>>` | Items `items` may name by id. |
+| `label` | `string` | Optional heading above the bar. |
+| `node` | `KonvexBase` | A node whose `context-request` opens the bar. |
+
+The bar can also be opened from any other source: the template ref exposes
+`open(request)` and `hide()`, and a request is anything with a `pointerScreen`.
+That is how `EditableLineToolbar` opens it from the line's `toolbar-request`.
+
+An item (`KonvexContextToolbarItem<Ctx>`) has an `id`, an optional `label`
+(tooltip), a `render` — an `'mdi-…'` glyph name, `{ icon, class? }`,
+`{ component, props? }` or `(ctx) => VNodeChild` — and optional `state(ctx)`
+returning `'hidden'`, `'disabled'` or `'enabled'` (the default), `run(ctx)`, and
+`keepOpen` to leave the bar open after `run`. Hidden items are dropped, and so is
+a divider left with no item on one side. The class `kxtb-icon-danger` paints a
+glyph red. `resolveContextToolbarItems(specs, builtins)` turns a spec list into
+items and separators for a host drawing its own UI.
 
 ---
 

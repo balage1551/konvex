@@ -351,6 +351,22 @@ export interface KonvexSignalMap {
    * own `destroy`.
    */
   'child-removed': { child: KonvexBase }
+  /**
+   * This node was right-clicked while its `contextRequest` is on: a request for
+   * a context toolbar (see `KonvexContextToolbar`). The browser's own menu has
+   * already been suppressed.
+   */
+  'context-request': KonvexContextRequest
+}
+
+/** Payload of the `context-request` signal. */
+export interface KonvexContextRequest {
+  /** The node that was right-clicked. */
+  node: KonvexBase
+  /** Pointer position in client/viewport coordinates — for placing a popup. */
+  pointerScreen: Vector2d
+  /** Pointer position in the node's layer — the world coordinate on the world layer. */
+  pointerWorld: Vector2d | null
 }
 
 /**

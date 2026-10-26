@@ -3,7 +3,7 @@
 // (delete + the six align actions), re-expressed in the item framework so they
 // sit alongside any custom tools a host adds.
 import { h } from 'vue'
-import { LINE_PROJECTION_SCOPES } from '@balage1551/konvex'
+import { CONTEXT_TOOLBAR_SEPARATOR, LINE_PROJECTION_SCOPES, resolveContextToolbarItems } from '@balage1551/konvex'
 import type { LineProjectionScope, LineProjectionScopeName, PolylineEnd } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type {
@@ -15,7 +15,7 @@ import type {
 import type { PointMovement } from '../EditableLine-types'
 
 /** Marker returned by {@link resolveToolbarItems} for a divider. */
-export const TOOLBAR_SEPARATOR = 'separator' as const
+export const TOOLBAR_SEPARATOR = CONTEXT_TOOLBAR_SEPARATOR
 export type ToolbarSeparator = typeof TOOLBAR_SEPARATOR
 
 /**
@@ -82,7 +82,7 @@ function alignItem(
 const deleteItem: EditableLineToolbarItem = {
   id: 'delete',
   label: 'Delete points',
-  render: { icon: 'mdi-trash-can', class: 'eltb-icon-danger' },
+  render: { icon: 'mdi-trash-can', class: 'kxtb-icon-danger' },
   state: onPoints(ctx => (ctx.selection.length ? 'enabled' : 'disabled')),
   run: ctx => ctx.line.removeSelected(),
 }
@@ -113,7 +113,7 @@ const toggleClosedItem: EditableLineToolbarItem = {
   render: ctx =>
     h('i', {
       class: [
-        'eltb-icon',
+        'kxtb-icon',
         'mdi',
         ctx.line.line.closed.value ? 'mdi-vector-polygon' : 'mdi-vector-polyline',
       ],
@@ -138,7 +138,7 @@ function arrowHeadItem(end: PolylineEnd): EditableLineToolbarItem {
     render: ctx =>
       h('i', {
         class: [
-          'eltb-icon',
+          'kxtb-icon',
           'mdi',
           shown(ctx) ? (end === 'start' ? 'mdi-arrow-left' : 'mdi-arrow-right') : 'mdi-minus',
         ],
@@ -207,7 +207,7 @@ const projectionScopeItem: EditableLineToolbarItem = {
   label: 'Where new points land',
   render: ctx => {
     const face = scopeFace(ctx.line.projectionScope.value)
-    return h('i', { class: ['eltb-icon', 'mdi', face.icon], title: face.title })
+    return h('i', { class: ['kxtb-icon', 'mdi', face.icon], title: face.title })
   },
   keepOpen: true,
   run: ctx => {
@@ -295,19 +295,5 @@ export const DEFAULT_TOOLBAR_ITEMS: ToolbarItemSpec[] = [
 export function resolveToolbarItems(
   specs: ToolbarItemSpec[],
 ): (EditableLineToolbarItem | ToolbarSeparator)[] {
-  const out: (EditableLineToolbarItem | ToolbarSeparator)[] = []
-  for (const spec of specs) {
-    if (typeof spec === 'string') {
-      if (spec === '|' || spec === TOOLBAR_SEPARATOR) {
-        out.push(TOOLBAR_SEPARATOR)
-        continue
-      }
-      const item = BUILTIN_TOOLBAR_ITEMS[spec]
-      if (item) out.push(item)
-      else console.warn(`[EditableLineToolbar] unknown builtin item '${spec}'`)
-      continue
-    }
-    out.push(spec)
-  }
-  return out
+  return resolveContextToolbarItems(specs, BUILTIN_TOOLBAR_ITEMS)
 }

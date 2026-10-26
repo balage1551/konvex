@@ -1,45 +1,22 @@
 <template>
-  <div
-    v-if="visible && ctx"
-    ref="root"
-    class="eltb"
-    :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
-    @contextmenu.prevent
-  >
-    <div v-if="label" class="eltb-info">{{ label }}</div>
-    <div class="eltb-row">
-      <template v-for="(entry, i) in entries" :key="i">
-        <span v-if="entry.kind === 'separator'" class="eltb-sep" />
-        <button
-          v-else
-          class="eltb-btn"
-          :class="{ 'eltb-btn-disabled': entry.state === 'disabled' }"
-          :disabled="entry.state === 'disabled'"
-          :title="entry.item.label"
-          @click="activate(entry)"
-        >
-          <ItemContent :item="entry.item" :ctx="ctx" />
-        </button>
-      </template>
-    </div>
-  </div>
+  <KonvexContextToolbar
+    ref="bar"
+    :context="context"
+    :items="items"
+    :builtins="BUILTIN_TOOLBAR_ITEMS"
+    :label="label"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch, type VNodeChild } from 'vue'
+// konvex's context toolbar, specialised to an EditableLine: it opens on the
+// line's `toolbar-request` and hands the items an EditableLineToolbarContext.
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { KonvexContextToolbar } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type { EditableLineToolbarRequest } from '../EditableLine-events'
-import {
-  DEFAULT_TOOLBAR_ITEMS,
-  resolveToolbarItems,
-  TOOLBAR_SEPARATOR,
-} from './EditableLineToolbar-items'
-import type {
-  EditableLineToolbarContext,
-  EditableLineToolbarItem,
-  ToolbarItemSpec,
-  ToolbarItemState,
-} from './EditableLineToolbar-types'
+import { BUILTIN_TOOLBAR_ITEMS, DEFAULT_TOOLBAR_ITEMS } from './EditableLineToolbar-items'
+import type { EditableLineToolbarContext, ToolbarItemSpec } from './EditableLineToolbar-types'
 
 const props = withDefaults(
   defineProps<{
@@ -52,16 +29,11 @@ const props = withDefaults(
   { items: () => DEFAULT_TOOLBAR_ITEMS, label: undefined },
 )
 
-const visible = ref(false)
-const pos = ref({ x: 0, y: 0 })
-const request = ref<EditableLineToolbarRequest | null>(null)
-const root = ref<HTMLElement>()
+const bar = ref<{ open: (req: EditableLineToolbarRequest) => void; hide: () => void } | null>(null)
 
-// Live context: recomputed as the selection changes while the bar is open, so
-// each item's state/label tracks the current points.
-const ctx = computed<EditableLineToolbarContext | null>(() => {
-  const req = request.value
-  if (!req) return null
+// Re-read while the bar is open, so each item's state/label tracks the current
+// selection.
+function context(req: EditableLineToolbarRequest): EditableLineToolbarContext {
   return {
     line: props.line,
     selection: props.line.selection.value,
@@ -70,157 +42,22 @@ const ctx = computed<EditableLineToolbarContext | null>(() => {
     pointerScreen: req.pointerScreen,
     hit: req.hit,
   }
-})
-
-const resolved = computed(() => resolveToolbarItems(props.items))
-
-/**
- * The visible items with their resolved three-state, plus separators. Hidden
- * items are dropped, and so is any separator left with nothing on one side, so
- * hiding a whole group leaves no stray or doubled divider.
- */
-const entries = computed(() => {
-  const c = ctx.value
-  const all = resolved.value.map(entry => {
-    if (entry === TOOLBAR_SEPARATOR) return { kind: 'separator' as const }
-    const state: ToolbarItemState = c ? (entry.state?.(c) ?? 'enabled') : 'hidden'
-    return { kind: 'item' as const, item: entry, state }
-  })
-  const shown = all.filter(e => e.kind === 'separator' || e.state !== 'hidden')
-  return shown.filter(
-    (e, i) =>
-      e.kind === 'item' ||
-      (i > 0 && shown[i - 1].kind === 'item' && shown.slice(i + 1).some(n => n.kind === 'item')),
-  )
-})
-
-/** Renders an item's `render` union into VNodes (mdi glyph / component / fn). */
-const ItemContent = (p: { item: EditableLineToolbarItem; ctx: EditableLineToolbarContext }): VNodeChild => {
-  const r = p.item.render
-  if (typeof r === 'string') return h('i', { class: ['eltb-icon', 'mdi', r] })
-  if (typeof r === 'function') return r(p.ctx)
-  if ('icon' in r) return h('i', { class: ['eltb-icon', 'mdi', r.icon, r.class] })
-  return h(r.component, r.props)
-}
-
-type Entry = (typeof entries)['value'][number]
-
-function hide(): void {
-  if (!visible.value) return
-  visible.value = false
-  request.value = null
-}
-
-function activate(entry: Entry): void {
-  if (entry.kind !== 'item' || entry.state !== 'enabled' || !ctx.value) return
-  entry.item.run?.(ctx.value)
-  if (!entry.item.keepOpen) hide()
-}
-
-// Document listeners live for the component's lifetime and no-op while hidden,
-// so dismiss-on-outside-click / Escape need no add/remove churn per open.
-function onDocMouseDown(e: MouseEvent): void {
-  if (visible.value && root.value && !root.value.contains(e.target as Node)) hide()
-}
-
-function onKeyDown(e: KeyboardEvent): void {
-  if (visible.value && e.key === 'Escape') hide()
-}
-
-function open(req: EditableLineToolbarRequest): void {
-  request.value = req
-  pos.value = req.pointerScreen
-  visible.value = true
 }
 
 // (Re)subscribe to the line's toolbar-request signal as the bound line changes.
 let off: (() => void) | undefined
 function subscribe(line: EditableLine): void {
   off?.()
-  off = line.events.on('toolbar-request', open)
+  off = line.events.on('toolbar-request', req => bar.value?.open(req))
 }
 
-onMounted(() => {
-  subscribe(props.line)
-  document.addEventListener('mousedown', onDocMouseDown, true)
-  document.addEventListener('keydown', onKeyDown, true)
-})
+onMounted(() => subscribe(props.line))
 watch(
   () => props.line,
   line => {
-    hide()
+    bar.value?.hide()
     subscribe(line)
   },
 )
-onBeforeUnmount(() => {
-  off?.()
-  hide()
-  document.removeEventListener('mousedown', onDocMouseDown, true)
-  document.removeEventListener('keydown', onKeyDown, true)
-})
+onBeforeUnmount(() => off?.())
 </script>
-
-<style scoped>
-.eltb {
-  position: fixed;
-  z-index: 1000;
-  /* Anchor the pointer at the bottom-centre so the bar floats above it. */
-  transform: translate(-50%, calc(-100% - 8px));
-  padding: 4px;
-  border-radius: 4px;
-  background: #37474f;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  user-select: none;
-}
-
-.eltb-info {
-  font-size: 80%;
-  color: #f1e495;
-  border-bottom: 1px solid #938a56;
-  padding: 0 2px 2px;
-  margin-bottom: 2px;
-}
-
-.eltb-row {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-}
-
-.eltb-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 4px;
-  border: none;
-  background: transparent;
-  color: #b6a258;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.eltb-btn:hover:not(.eltb-btn-disabled) {
-  color: #f5e184;
-}
-
-.eltb-btn-disabled {
-  color: #6f6f6f;
-  cursor: default;
-}
-
-.eltb-btn :deep(.eltb-icon-danger) {
-  color: #be3838;
-}
-
-.eltb-btn:hover:not(.eltb-btn-disabled) :deep(.eltb-icon-danger) {
-  color: #ff5050;
-}
-
-.eltb-sep {
-  width: 2px;
-  align-self: stretch;
-  background-color: #938a56;
-  margin: 2px 4px;
-}
-</style>

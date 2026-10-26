@@ -28,6 +28,7 @@
                   :items="toolbarItems"
                   :label="`Selected points: ${asEditableLine.selection.value.length}`"
                 />
+                <KonvexContextToolbar ref="nodeBar" :context="nodeContext" :items="nodeItems" label="Node" />
               </PmiSplitPaneContainer>
             </template>
             <template #second>
@@ -180,6 +181,7 @@
                 <v-btn size="small" class="m-btn" @click="addSprite">+ Sprite</v-btn>
                 <v-btn size="small" class="m-btn" @click="addGroup">+ Group</v-btn>
                 <v-btn size="small" class="m-btn" @click="addEditableLine">+ EditableLine</v-btn>
+                <v-btn size="small" class="m-btn" @click="addNode">+ Node</v-btn>
               </div>
               <div>
                 <v-btn size="small" class="m-btn" color="error" :disabled="!selected" @click="deleteSelected"> Delete selected </v-btn>
@@ -782,7 +784,8 @@ import ComponentHeader from './components/ComponentHeader.vue'
 import PmiSplitPane from './components/PmiSplitPane.vue'
 import PmiSplitPaneContainer from './components/PmiSplitPaneContainer.vue'
 import Konva from 'konva'
-import { KonvexStageContainer } from '@balage1551/konvex'
+import { KonvexContextToolbar, KonvexStageContainer } from '@balage1551/konvex'
+import type { ContextToolbarItemSpec, KonvexContextRequest } from '@balage1551/konvex'
 import type { KonvexStageExpose, Vector2d, WorldMode, ZoomMode } from '@balage1551/konvex'
 import type { KonvexStage } from '@balage1551/konvex'
 import type { KonvexLayer } from '@balage1551/konvex'
@@ -1113,6 +1116,68 @@ const toolbarItems: ToolbarItemSpec[] = [
   '|',
   'delete',
 ]
+
+// Demonstrates the core context toolbar on a plain node: `contextRequest` makes
+// a right-click emit `context-request`, and one shared bar opens for every node.
+interface NodeContext {
+  node: KonvexCircle
+  at: Vector2d | null
+}
+const NODE_COLORS = ['#ffd54f', '#81c784', '#64b5f6', '#e57373']
+const nodeColor = new WeakMap<KonvexCircle, number>()
+const nodeBar = ref<{ open: (req: KonvexContextRequest) => void; hide: () => void } | null>(null)
+function nodeContext(req: KonvexContextRequest): NodeContext {
+  return { node: req.node as KonvexCircle, at: req.pointerWorld }
+}
+const nodeItems: ContextToolbarItemSpec<NodeContext>[] = [
+  {
+    id: 'recolor',
+    label: 'Next colour',
+    render: 'mdi-palette',
+    keepOpen: true,
+    run: ({ node }) => {
+      const i = ((nodeColor.get(node) ?? 0) + 1) % NODE_COLORS.length
+      nodeColor.set(node, i)
+      node.fill.value = NODE_COLORS[i]
+    },
+  },
+  {
+    id: 'to-front',
+    label: 'Bring to front',
+    render: 'mdi-arrange-bring-to-front',
+    state: ({ node }) => (node.zIndex.value < (world?.children.length ?? 1) - 1 ? 'enabled' : 'disabled'),
+    run: ({ node }) => node.moveToTop(),
+  },
+  {
+    id: 'log',
+    label: 'Log pointer',
+    render: 'mdi-map-marker',
+    run: ({ at }) => console.log('node right-clicked at', at),
+  },
+  '|',
+  {
+    id: 'delete',
+    label: 'Delete node',
+    render: { icon: 'mdi-trash-can', class: 'kxtb-icon-danger' },
+    run: ({ node }) => {
+      select(node)
+      deleteSelected()
+    },
+  },
+]
+function addNode(): void {
+  const p = randPos()
+  const node = new KonvexCircle({
+    ...p,
+    radius: 14,
+    fill: NODE_COLORS[0],
+    stroke: { color: '#fff', width: 2 },
+    scalable: false,
+    contextRequest: true,
+  })
+  node.signals.on('context-request', req => nodeBar.value?.open(req))
+  register(node)
+}
 
 /** Radius of the demo EditableLine's end nodes, and so of its heads' offset. */
 const NODE_RADIUS = 12

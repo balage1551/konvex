@@ -214,6 +214,12 @@ A data-driven toolbar. Provide a list of **item specs** — builtin ids, divider
 tokens, or inline item objects — and render them with the `EditableLineToolbar`
 component (or drive your own UI from the same registry).
 
+It is konvex's generic [`<KonvexContextToolbar>`](konvex.md#konvexcontexttoolbar-component)
+specialised to a line: `EditableLineToolbarItem` is
+`KonvexContextToolbarItem<EditableLineToolbarContext>`, and the component opens
+on the line's `toolbar-request`. The same item shape therefore works for the
+right-click menus of other nodes.
+
 ### `<EditableLineToolbar>` component
 
 | Prop | Type | Notes |

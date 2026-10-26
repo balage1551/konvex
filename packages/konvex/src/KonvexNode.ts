@@ -45,6 +45,8 @@ export interface KonvexNodeConfig extends KonvexBaseConfig {
   name?: AttrSource<string>
   /** When `false`, the node keeps a constant on-screen size at any zoom. */
   scalable?: boolean
+  /** When `true`, a right-click emits a `context-request` signal. See {@link KonvexNode.contextRequest}. */
+  contextRequest?: boolean
 }
 
 /** Node attributes that {@link KonvexNode} binds generically from config. */
@@ -120,6 +122,14 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
    * next flush. Set this back to `true` to take the scale over.
    */
   readonly scalable: Ref<boolean> = ref(true)
+
+  /**
+   * Whether a right-click on this node asks for a context toolbar (default
+   * `false`). While `true`, a right-click suppresses the browser's menu, stops
+   * the event bubbling to ancestors, and emits a `context-request` signal with
+   * the pointer — what `KonvexContextToolbar` listens for.
+   */
+  readonly contextRequest: Ref<boolean> = ref(false)
 
   // --- composite views over the scalars above (accept a VectorParameter) ---
   readonly position: WritableComputedRef<Vector2d, VectorParameter>
@@ -279,6 +289,30 @@ export abstract class KonvexNode<T extends Konva.Node> extends KonvexBase {
 
     this.applyConfig(config, NODE_ATTR_KEYS)
     if (config.scalable !== undefined) this.scalable.value = config.scalable
+    if (config.contextRequest !== undefined) this.contextRequest.value = config.contextRequest
+
+    // Bound only while asked for, so nodes that never opt in carry no listener.
+    let offContextMenu: (() => void) | undefined
+    this.scope.run(() =>
+      watch(
+        this.contextRequest,
+        on => {
+          offContextMenu?.()
+          offContextMenu = on
+            ? this.onContextMenu(e => {
+                e.evt.preventDefault()
+                e.cancelBubble = true
+                this.signals.emit('context-request', {
+                  node: this,
+                  pointerScreen: { x: e.evt.clientX, y: e.evt.clientY },
+                  pointerWorld: this._node.getLayer()?.getRelativePointerPosition() ?? null,
+                })
+              })
+            : undefined
+        },
+        { immediate: true },
+      ),
+    )
 
     // Constant-size support. The ancestor (cumulative) scale is just the parent's
     // effective scale; when `scalable` is false we drive our own scale to its
