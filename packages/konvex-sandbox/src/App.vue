@@ -868,6 +868,7 @@ const editableLines: EditableLine[] = []
 const EVENT_LOG_SIZE = 100
 const eventLogs = new Map<EditableLine, Ref<string[]>>()
 const LOGGED_EVENTS: (keyof EditableLineEventMap)[] = [
+  'toolbar-request',
   'point-added',
   'point-removed',
   'point-moved',
@@ -1105,7 +1106,8 @@ const toolbarItems: ToolbarItemSpec[] = [
     id: 'log-coords',
     label: 'Log selected coords',
     render: { icon: 'mdi-map-marker' },
-    state: ctx => (ctx.selection.length ? 'enabled' : 'disabled'),
+    // A point item, like the builtin aligns: hidden when the line body was right-clicked.
+    state: ctx => (ctx.hit?.kind === 'line' ? 'hidden' : ctx.selection.length ? 'enabled' : 'disabled'),
     run: ctx => console.log('selected points', ctx.points),
   },
   '|',

@@ -253,6 +253,12 @@ const items: ToolbarItemSpec[] = [
 `straighten`, `simplify`, `toggle-closed`, `projection-scope`, `arrow-start`,
 `arrow-end`, `delete`.
 
+The point items — the six aligns, `straighten` and `delete` — are hidden when the
+bar is opened by right-clicking the line body (`hit.kind === 'line'`), so the bar
+there offers only what acts on the line as a whole. Opened from a point, it offers
+everything. A divider left with no item on one side is dropped as well. A custom
+item does the same by checking `ctx.hit` in its `state()`.
+
 `arrow-start` / `arrow-end` show or hide that end's [arrowhead](#arrowheads). Only
 `show` flips, so a head comes back as it was; on a line with none configured they
 add the default triangle. They are disabled on a closed or curved line, where heads
@@ -308,7 +314,17 @@ interface EditableLineToolbarItem {
 and possibly click again; everything else dismisses the bar on activation.
 
 `ctx` (`EditableLineToolbarContext`) gives `line`, `selection`, `points`
-(resolved `PointInfo[]`), `pointerWorld`, `pointerScreen`.
+(resolved `PointInfo[]`), `pointerWorld`, `pointerScreen`, and `hit` — what was
+right-clicked (see below), so an item's `state()` can depend on it:
+
+```ts
+const deletePoint: EditableLineToolbarItem = {
+  id: 'delete-this-point',
+  render: 'mdi-delete',
+  state: ({ hit, line }) => (hit?.kind === 'point' && hit.index > 0 && hit.index < line.pointCount - 1 ? 'enabled' : 'hidden'),
+  run: ({ hit, line }) => hit?.kind === 'point' && line.removePoint(hit.index),
+}
+```
 
 ### `toolbar-request` event
 
@@ -316,10 +332,20 @@ Right-clicking the line emits `toolbar-request` with where and what was clicked 
 wire it to show a context toolbar at the pointer:
 
 ```ts
-el.events.on('toolbar-request', ({ pointerScreen, pointerWorld, selection }) => {
+el.events.on('toolbar-request', ({ pointerScreen, pointerWorld, selection, hit }) => {
   // position and open your toolbar popup at pointerScreen
 })
 ```
+
+`hit` says what the click landed on:
+
+- `{ kind: 'point', index }` — a point's handle. This names the point even when it
+  is not selectable, and so not in `selection`.
+- `{ kind: 'line', segment, proportion }` — the line or one of its arrowheads,
+  placed by projecting the pointer onto the line's body: between points `segment`
+  and `segment + 1`, `proportion` of the way along. This ignores
+  `projectionScope`, which limits where points may be added, not what was clicked.
+- `null` — a line hit whose pointer position could not be read.
 
 ---
 

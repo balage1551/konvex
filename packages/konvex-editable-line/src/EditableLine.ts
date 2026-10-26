@@ -1163,10 +1163,18 @@ export class EditableLine extends KonvexGroup {
       if (handleIdx >= 0 && this.effectiveSelectable(handleIdx) && !this.selection.value.includes(handleIdx)) {
         this.select(handleIdx, { extend: me.ctrlKey })
       }
+      const pointerWorld = this.localPointer()
+      // A line hit is placed by the body projection, whatever `projectionScope`
+      // says: that scope governs where points may be added, not what was clicked.
+      const proj = handleIdx < 0 && pointerWorld ? this.line.project(pointerWorld, LINE_PROJECTION_SCOPES.internal) : undefined
       this.events.emit('toolbar-request', {
         pointerScreen: { x: me.clientX, y: me.clientY },
-        pointerWorld: this.localPointer(),
+        pointerWorld,
         selection: this.selection.value,
+        hit:
+          handleIdx >= 0
+            ? { kind: 'point', index: handleIdx }
+            : proj ? { kind: 'line', segment: proj.segment, proportion: proj.proportion } : null,
       })
     }))
     // Rubber-band: left-drag on empty canvas. Started here; grown on mousemove;

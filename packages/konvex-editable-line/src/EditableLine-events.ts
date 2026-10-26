@@ -4,6 +4,14 @@
 // reaching into the underlying stage. Deliberately minimal; no framework dep.
 import type { KonvexListener, Vector2d } from '@balage1551/konvex'
 
+/**
+ * What a right-click landed on: a point's handle, or the line itself (an
+ * arrowhead counts as the line). For the line, `segment` and `proportion` place
+ * the click on it, from the line's body projection — `segment` is between
+ * points `segment` and `segment + 1`, `proportion` the fraction along it.
+ */
+export type EditableLineHit = { kind: 'point'; index: number } | { kind: 'line'; segment: number; proportion: number }
+
 /** Payload of a {@link EditableLineEventMap.toolbar-request}. */
 export interface EditableLineToolbarRequest {
   /** Pointer position in client/viewport coordinates — for placing a popup. */
@@ -12,6 +20,12 @@ export interface EditableLineToolbarRequest {
   pointerWorld: Vector2d | null
   /** The selection at the moment the toolbar was requested. */
   selection: readonly number[]
+  /**
+   * What was right-clicked. Unlike `selection`, this names a point even when it
+   * is not selectable. `null` only for a line hit whose pointer position could
+   * not be read.
+   */
+  hit: EditableLineHit | null
 }
 
 /**

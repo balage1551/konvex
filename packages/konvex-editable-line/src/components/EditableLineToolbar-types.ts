@@ -6,6 +6,7 @@
 import type { Component, VNodeChild } from 'vue'
 import type { Vector2d } from '@balage1551/konvex'
 import type { PointInfo } from '../EditableLine-types'
+import type { EditableLineHit } from '../EditableLine-events'
 import type { EditableLine } from '../EditableLine'
 
 /** Three-state result of {@link EditableLineToolbarItem.state}. */
@@ -22,6 +23,8 @@ export interface EditableLineToolbarContext {
   pointerWorld: Vector2d | null
   /** Where the toolbar was invoked, in client/viewport coordinates. */
   pointerScreen: Vector2d
+  /** What was right-clicked to invoke it; see {@link EditableLineHit}. */
+  hit: EditableLineHit | null
 }
 
 /**

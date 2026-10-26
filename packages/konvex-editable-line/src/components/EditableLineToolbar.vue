@@ -11,7 +11,7 @@
       <template v-for="(entry, i) in entries" :key="i">
         <span v-if="entry.kind === 'separator'" class="eltb-sep" />
         <button
-          v-else-if="entry.state !== 'hidden'"
+          v-else
           class="eltb-btn"
           :class="{ 'eltb-btn-disabled': entry.state === 'disabled' }"
           :disabled="entry.state === 'disabled'"
@@ -68,19 +68,30 @@ const ctx = computed<EditableLineToolbarContext | null>(() => {
     points: props.line.pointInfos.value.filter(p => p.selected),
     pointerWorld: req.pointerWorld,
     pointerScreen: req.pointerScreen,
+    hit: req.hit,
   }
 })
 
 const resolved = computed(() => resolveToolbarItems(props.items))
 
-/** Items paired with their currently-resolved three-state, plus separators. */
+/**
+ * The visible items with their resolved three-state, plus separators. Hidden
+ * items are dropped, and so is any separator left with nothing on one side, so
+ * hiding a whole group leaves no stray or doubled divider.
+ */
 const entries = computed(() => {
   const c = ctx.value
-  return resolved.value.map(entry => {
+  const all = resolved.value.map(entry => {
     if (entry === TOOLBAR_SEPARATOR) return { kind: 'separator' as const }
     const state: ToolbarItemState = c ? (entry.state?.(c) ?? 'enabled') : 'hidden'
     return { kind: 'item' as const, item: entry, state }
   })
+  const shown = all.filter(e => e.kind === 'separator' || e.state !== 'hidden')
+  return shown.filter(
+    (e, i) =>
+      e.kind === 'item' ||
+      (i > 0 && shown[i - 1].kind === 'item' && shown.slice(i + 1).some(n => n.kind === 'item')),
+  )
 })
 
 /** Renders an item's `render` union into VNodes (mdi glyph / component / fn). */

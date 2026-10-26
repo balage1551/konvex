@@ -10,6 +10,7 @@ import type {
   EditableLineToolbarContext,
   EditableLineToolbarItem,
   ToolbarItemSpec,
+  ToolbarItemState,
 } from './EditableLineToolbar-types'
 import type { PointMovement } from '../EditableLine-types'
 
@@ -48,10 +49,17 @@ function movableAlong(movable: PointMovement, axis: 'x' | 'y'): boolean {
   return movable === 'free' || movable === axis
 }
 
+/**
+ * Hide a point item when the bar was opened from the line body rather than from
+ * a point: there, only the items that act on the line as a whole are offered.
+ */
+function onPoints(state: (ctx: EditableLineToolbarContext) => ToolbarItemState) {
+  return (ctx: EditableLineToolbarContext): ToolbarItemState => (ctx.hit?.kind === 'line' ? 'hidden' : state(ctx))
+}
+
 /** At least two points that can move along `axis` — the precondition for an align. */
 function canAlign(axis: 'x' | 'y') {
-  return (ctx: EditableLineToolbarContext): 'disabled' | 'enabled' =>
-    ctx.points.filter(p => movableAlong(p.movable, axis)).length >= 2 ? 'enabled' : 'disabled'
+  return onPoints(ctx => (ctx.points.filter(p => movableAlong(p.movable, axis)).length >= 2 ? 'enabled' : 'disabled'))
 }
 
 function alignItem(
@@ -75,7 +83,7 @@ const deleteItem: EditableLineToolbarItem = {
   id: 'delete',
   label: 'Delete points',
   render: { icon: 'mdi-trash-can', class: 'eltb-icon-danger' },
-  state: ctx => (ctx.selection.length ? 'enabled' : 'disabled'),
+  state: onPoints(ctx => (ctx.selection.length ? 'enabled' : 'disabled')),
   run: ctx => ctx.line.removeSelected(),
 }
 
@@ -84,7 +92,7 @@ const straightenItem: EditableLineToolbarItem = {
   id: 'straighten',
   label: 'Straighten',
   render: { icon: 'mdi-vector-line' },
-  state: ctx => (ctx.selection.length >= 3 ? 'enabled' : 'disabled'),
+  state: onPoints(ctx => (ctx.selection.length >= 3 ? 'enabled' : 'disabled')),
   run: ctx => ctx.line.straightenSelection(),
 }
 
