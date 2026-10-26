@@ -336,12 +336,13 @@ every one is emitted *after* the edit has settled: a handler can read
 | `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
 | `point-removed` | `{ index, point, count }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
 | `point-moved` | `{ index, point, from }` | a drag (**on release**), `movePoint`, `straightenSelection` |
+| `point-drag-start` | `{ index, indices, from }` — `index` is the anchor, `indices` every point moving with it | a handle drag starting |
+| `point-moving` | `{ index, point, from }` — the anchor, axis constraints applied | a handle drag, **every frame** |
+| `point-drag-end` | `{ index, point, from, cancelled }` | a handle drag ending, **before** its `point-moved` |
 | `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` — **deferred to the drag end** if it arrives mid-drag |
 
 ```ts
-el.events.on('point-moved', ({ index, point, dragging }) => {
-  if (!dragging) store.commit(index, point)   // settled edits only
-})
+el.events.on('point-moved', ({ index, point }) => store.commit(index, point))
 el.events.on('points-replaced', () => store.reload(el.pointInfos.value))
 ```
 
@@ -351,8 +352,16 @@ Three things worth knowing:
   stream: no event per frame, and `from` is where the drag *started*, so the
   payload is safe to persist or push onto an undo stack as-is. A multi-point drag
   emits one event per point it moved, and a drag that ends where it began emits
-  nothing. (A streaming `point-moving` counterpart may follow; it does not exist
-  yet — until then, watch `line.points` or `pointInfos` for live geometry.)
+  nothing.
+- **The drag itself streams separately.** `point-drag-start`, then a
+  `point-moving` per frame for the anchor (the point under the pointer), then
+  `point-drag-end`, then the drag's `point-moved`s. They fire for handle drags
+  only — not for `movePoint` or a drag of the whole line — so a host can tell a
+  drag from other writes, e.g. to highlight a drop target under the anchor and
+  decide on release. `cancelled` is `true` when the drag was cut short instead of
+  released: a point added or removed mid-drag destroys the dragged handle. Its
+  `index` is then the anchor's index at drag start, and `point` the last one
+  `point-moving` reported.
 - **`points-replaced` is deliberately coarse.** When the array is swapped
   wholesale, the old and new points cannot be matched up without guessing, so
   konvex does not invent per-point events for it: treat any index-keyed state you

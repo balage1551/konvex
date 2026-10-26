@@ -35,8 +35,8 @@ export interface EditableLinePointChange {
  * A point finished moving.
  *
  * One per moved point, once the move has landed — a drag reports on release, not
- * per frame, so this is safe to persist or push onto an undo stack. (A streaming
- * `point-moving` counterpart may follow; it does not exist yet.)
+ * per frame, so this is safe to persist or push onto an undo stack. For the
+ * drag as it happens, see {@link EditableLinePointDragStart} and its siblings.
  */
 export interface EditableLinePointMove {
   index: number
@@ -44,6 +44,41 @@ export interface EditableLinePointMove {
   point: Vector2d
   /** Where it was before the move — for a drag, where the drag started. */
   from: Vector2d
+}
+
+/**
+ * A handle drag began. `index` is the anchor — the point under the pointer —
+ * and `indices` every point moving with it (the selection, or just the anchor).
+ */
+export interface EditableLinePointDragStart {
+  index: number
+  indices: readonly number[]
+  /** The anchor's position when the drag started. */
+  from: Vector2d
+}
+
+/** The anchor point moved during a drag. Once per frame, after the geometry is written. */
+export interface EditableLinePointMoving {
+  index: number
+  /** The anchor's position now, axis constraints applied. */
+  point: Vector2d
+  /** The anchor's position when the drag started. */
+  from: Vector2d
+}
+
+/**
+ * A handle drag ended, emitted before that drag's `point-moved` events.
+ *
+ * `cancelled` is `true` when the drag was cut short rather than released: a
+ * point was added or removed mid-drag, which destroys the dragged handle. `index`
+ * is then the anchor's index at drag start and may no longer name that point;
+ * `point` is where it was last reported.
+ */
+export interface EditableLinePointDragEnd {
+  index: number
+  point: Vector2d
+  from: Vector2d
+  cancelled: boolean
 }
 
 /**
@@ -66,6 +101,9 @@ export interface EditableLineEventMap {
   'point-added': EditableLinePointChange
   'point-removed': EditableLinePointChange
   'point-moved': EditableLinePointMove
+  'point-drag-start': EditableLinePointDragStart
+  'point-moving': EditableLinePointMoving
+  'point-drag-end': EditableLinePointDragEnd
   'points-replaced': EditableLinePointsReplaced
 }
 

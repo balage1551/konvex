@@ -158,6 +158,10 @@ export class EditableLine extends KonvexGroup {
   // point and the start coordinate of every point that moves with it.
   private _dragAnchorIndex = -1
   private _dragOrigins: { index: number; x: number; y: number }[] = []
+  // The anchor's handle — gone from `_handles` if a structural edit cut the drag
+  // short — and the anchor position `point-moving` last reported.
+  private _dragAnchorHandle: KonvexRect | null = null
+  private _dragLast: Vector2d = { x: 0, y: 0 }
   // Rubber-band box selection.
   private readonly _rubberBand: KonvexRect
   private readonly _rubberEnabled: boolean
@@ -465,7 +469,21 @@ export class EditableLine extends KonvexGroup {
     // no `point-moved` for the move that had just happened.
     this.onDragEnd(() => {
       this._dragging = false
+      const anchorHandle = this._dragAnchorHandle
+      const anchorIndex = this._dragAnchorIndex
+      this._dragAnchorHandle = null
       this._dragAnchorIndex = -1
+      // A body drag of the whole line has no anchor and reports nothing here.
+      const start = this._dragOrigins.find(o => o.index === anchorIndex)
+      if (anchorHandle && start) {
+        const cancelled = !this._handles.includes(anchorHandle)
+        this.events.emit('point-drag-end', {
+          index: anchorIndex,
+          point: cancelled ? this._dragLast : this.pointAt(anchorIndex),
+          from: { x: start.x, y: start.y },
+          cancelled,
+        })
+      }
       // One report per point the drag actually moved, measured from where the
       // drag started — a drag that ends where it began says nothing. Indices can
       // have shifted under us (that structural edit), so skip anything now past
@@ -988,6 +1006,10 @@ export class EditableLine extends KonvexGroup {
         const p = this.pointAt(i)
         return { index: i, x: p.x, y: p.y }
       })
+      this._dragAnchorHandle = h
+      const from = this.pointAt(idx)
+      this._dragLast = from
+      this.events.emit('point-drag-start', { index: idx, indices: [...moving], from: { ...from } })
     })
     h.onDragMove(e => {
       const idx = this._handles.indexOf(h)
@@ -1018,6 +1040,8 @@ export class EditableLine extends KonvexGroup {
       }
       this.applyDragDelta(dx, dy)
       this.updateDragConstraint(axis, anchor.x + dx, anchor.y + dy)
+      this._dragLast = this.pointAt(idx)
+      this.events.emit('point-moving', { index: idx, point: this._dragLast, from: { x: anchor.x, y: anchor.y } })
     })
     return h
   }
@@ -1040,7 +1064,8 @@ export class EditableLine extends KonvexGroup {
       if (hh) hh.position.value = { x: nx, y: ny }
     }
     this.writePoints(f)
-    // No event per frame: `point-moved` reports the landed move, from dragEnd.
+    // `point-moved` reports the landed move, from dragEnd; the per-frame
+    // `point-moving` is the drag handler's, since only it knows the anchor.
   }
 
   /** Draw (or hide) the axis guide through the dragged point at (x, y). */
