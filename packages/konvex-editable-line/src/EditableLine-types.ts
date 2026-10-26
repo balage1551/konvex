@@ -220,6 +220,12 @@ export interface EditableLineConfig extends KonvexGroupConfig {
 
   /** Double-clicking the line inserts a point at the projection. */
   breakOnDblClick?: boolean
+  /**
+   * Extra width, in screen pixels on each side of the stroke, that still counts
+   * as a hit on the line (default `2`), at any zoom. Ignored when `line` sets
+   * its own `hitStrokeWidth`.
+   */
+  hitTolerance?: number
   /** Double-clicking the stage adds a point (snapped to the line if close). */
   addOnDblClick?: boolean
   /**

@@ -28,6 +28,8 @@ import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-e
 const DEFAULT_SNAP_THRESHOLD = 10
 /** Default arrowhead extent along the line when `size` is unset. */
 const DEFAULT_HEAD_SIZE = 10
+/** Screen pixels either side of the stroke that still hit the line, when `hitTolerance` is unset. */
+const DEFAULT_HIT_TOLERANCE = 2
 
 /** `value` when it is a usable positive number, else `fallback`. */
 function positiveOr(value: number | undefined, fallback: number): number {
@@ -119,6 +121,8 @@ export class EditableLine extends KonvexGroup {
   readonly addOnDblClick: Ref<boolean>
   /** Double-clicking the line inserts a point at the projection. */
   readonly breakOnDblClick: Ref<boolean>
+  /** Screen pixels either side of the stroke that still hit the line. */
+  readonly hitTolerance: Ref<number>
   /** Alt+click commits the assist (insert on the line, or extend at the cursor). */
   readonly addOnAltClick: Ref<boolean>
   /** Keep the point selection when the line is deactivated; otherwise it clears on deselect. */
@@ -248,6 +252,7 @@ export class EditableLine extends KonvexGroup {
     this.defaultSelectable = ref(config.selectable ?? true)
     this.addOnDblClick = ref(config.addOnDblClick ?? false)
     this.breakOnDblClick = ref(config.breakOnDblClick ?? false)
+    this.hitTolerance = ref(config.hitTolerance ?? DEFAULT_HIT_TOLERANCE)
     this.addOnAltClick = ref(config.addOnAltClick ?? false)
     this.persistentSelection = ref(config.persistentSelection ?? false)
 
@@ -258,6 +263,15 @@ export class EditableLine extends KonvexGroup {
     // foreign write, and report a `points-replaced` nobody made.
     this._reconciled = this.line.points.value
     this.add(this.line)
+    // Widen the hit region by the tolerance. Konva draws the hit stroke under
+    // the same transform as the stroke, so a scaling stroke needs the tolerance
+    // divided by the zoom to stay a constant on-screen width.
+    if (config.line?.hitStrokeWidth === undefined) {
+      this.line.hitStrokeWidth.value = () => {
+        const zoom = this.isScalable('line') ? Math.abs(this.effectiveScaleX.value) || 1 : 1
+        return (this.line.strokeWidth.value ?? 1) + (2 * Math.max(0, this.hitTolerance.value)) / zoom
+      }
+    }
     this._options = (config.points ?? []).map((_, i) => config.pointOptions?.[i])
 
     // Arrowheads sit on the line and under the editing chrome. They listen like the

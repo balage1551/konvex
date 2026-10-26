@@ -94,6 +94,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `startHead` / `endHead` | `ArrowHeadConfig` | — | Arrowhead before the first / after the last point. See [Arrowheads](#arrowheads). |
 | `scalableComponents` | `'all' \| 'none' \| ('line'\|'marker'\|'helper'\|'decoration')[]` | `['line', 'decoration']` | Which parts scale with zoom. `'decoration'` is the arrowheads. |
 | `breakOnDblClick` | `boolean` | — | Double-click the line inserts a point at the projection. Splitting a segment only makes sense on the body, so this is inert unless `projectionScope` contains `'internal'`. |
+| `hitTolerance` | `number` | `2` | Extra width, in screen pixels on each side of the stroke, that still counts as a click on the line — at any zoom, since it follows the line's stroke scaling. Sets the line's `hitStrokeWidth`, so it is ignored when `line` gives its own. Also a live ref, `el.hitTolerance`. |
 | `addOnDblClick` | `boolean` | — | Double-click the stage adds a point, where `projectionScope` says (snapped onto the line if within `snapThreshold`). |
 | `addOnAltClick` | `boolean` | — | Alt+click commits the assist (insert / extend). |
 
