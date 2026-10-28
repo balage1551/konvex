@@ -776,8 +776,11 @@ export class EditableLine extends KonvexGroup {
     const n = Math.floor(flat.length / 2)
     const scalable = this.isScalable('decoration')
     const strokeScale = this.isScalable('line')
-    // A constant-size head is `size` screen pixels, which is this much of the line.
-    const zoom = scalable ? 1 : Math.abs(this.effectiveScaleX.value) || 1
+    // Screen pixels → line units: `size` when the decoration does not scale, and
+    // `offset` when it is given in screen pixels. Read only when one needs it, so
+    // a line with no such field does not replan on every zoom.
+    const pxScale = (): number => Math.abs(this.effectiveScaleX.value) || 1
+    const zoom = scalable ? 1 : pxScale()
     const color = line.strokeColor.value ?? '#000000'
     const baseStroke: Stroke = {
       color,
@@ -789,10 +792,17 @@ export class EditableLine extends KonvexGroup {
 
     const ends = (['start', 'end'] as const).map(end => {
       const cfg = this.headConfig(end).value
-      if (!(cfg.show ?? true)) return { head: null, offset: 0, cut: 0, terminal: null }
+      const rawOffset = positiveOr(cfg.offset, 0)
+      const offset = cfg.offsetUnit === 'screen' && rawOffset ? rawOffset / pxScale() : rawOffset
+      // A hidden head still leaves the end clear of its object: the line stops
+      // `offset` short — there is no head, so base and tip are the same place —
+      // unless `trim: 'none'` says to draw it whole.
+      if (!(cfg.show ?? true)) {
+        const cut = cfg.trim === 'none' ? 0 : offset
+        return { head: null, offset: cut, cut, terminal: null }
+      }
       const shape = cfg.shape ?? 'triangle'
       const size = positiveOr(cfg.size, DEFAULT_HEAD_SIZE)
-      const offset = positiveOr(cfg.offset, 0)
       const trim = cfg.trim ?? (shape === 'open' ? 'tip' : 'base')
       const cut = trim === 'none' ? 0 : offset + (trim === 'base' ? size / zoom : 0)
       const anchor = polylineAnchor(flat, end, offset)

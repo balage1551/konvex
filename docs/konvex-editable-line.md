@@ -151,11 +151,12 @@ el.startHead.value = { shape: 'open' }  // add one at the start too
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `show` | `boolean` | `true` | Drawn or not. The toolbar's arrow items flip only this, so the rest survives a hide. |
+| `show` | `boolean` | `true` | Drawn or not. The toolbar's arrow items flip only this, so the rest survives a hide. A hidden head still keeps the line `offset` short of the end point (unless `trim: 'none'`), so `{ show: false, offset }` clears an object on an end that has no head. |
 | `shape` | `'triangle' \| 'open' \| 'diamond' \| 'circle' \| ArrowHeadFactory` | `'triangle'` | `open` is two strokes meeting at the tip (`—>`): no base and no fill, so it is not an unfilled triangle. `circle` becomes an ellipse at a ratio other than 1. |
 | `size` | `number` | `10` | Extent along the line. World units while `'decoration'` scales, screen pixels when it does not. |
 | `ratio` | `number` | `1` | Length ÷ width. `2` makes a head twice as long as it is wide. Applies to every shape. |
-| `offset` | `number` | `0` | Gap from the end point to the tip, along the line, in world units — the radius of a circular object sitting on the end point. |
+| `offset` | `number` | `0` | Gap from the end point to the tip, along the line — the radius of a circular object sitting on the end point. In world units unless `offsetUnit` says otherwise. |
+| `offsetUnit` | `'world' \| 'screen'` | `'world'` | `'screen'` measures `offset` in screen pixels at any zoom — for an end object of constant on-screen size, such as a non-scalable marker. Independent of `'decoration'` scaling. |
 | `atEveryPoint` | `boolean` | `false` | Repeat the head at every internal point too — see below. |
 | `trim` | `'base' \| 'tip' \| 'none'` | `'base'` (`'tip'` for `open`) | Where the drawn line stops: at the back of the head, at its tip, or not at all. `offset` is always part of the cut except for `'none'`. |
 | `fill` | `FillInput` | line's stroke colour | Filled shapes only by default; `open` has none. |

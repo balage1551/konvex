@@ -133,9 +133,16 @@ export type ArrowHeadBuiltin = 'triangle' | 'open' | 'diamond' | 'circle'
 /** How far the line itself is shortened under a head. */
 export type ArrowHeadTrim = 'base' | 'tip' | 'none'
 
+/** The unit of {@link ArrowHeadConfig.offset}. */
+export type ArrowHeadOffsetUnit = 'world' | 'screen'
+
 /** One end's arrowhead. */
 export interface ArrowHeadConfig {
-  /** Whether the head is drawn (default `true` once configured). */
+  /**
+   * Whether the head is drawn (default `true` once configured). A hidden head
+   * still keeps the line `offset` short of its end point, unless `trim` is
+   * `'none'` — so an end with an object on it but no head is just `{ show: false, offset }`.
+   */
   show?: boolean
   /** Built-in shape or a factory (default `'triangle'`). */
   shape?: ArrowHeadBuiltin | ArrowHeadFactory
@@ -147,10 +154,17 @@ export interface ArrowHeadConfig {
   /** Length ÷ width (default `1`): `2` makes the head twice as long as it is wide. */
   ratio?: number
   /**
-   * Gap between the end point and the tip, measured along the line, in world
-   * units (default `0`) — the radius of a circular object sitting on that point.
+   * Gap between the end point and the tip, measured along the line (default
+   * `0`) — the radius of a circular object sitting on that point. In world
+   * units unless {@link offsetUnit} says screen pixels.
    */
   offset?: number
+  /**
+   * What `offset` is measured in: `'world'` (default), or `'screen'` pixels at
+   * any zoom — for an object on the end that keeps a constant on-screen size,
+   * such as a non-scalable marker.
+   */
+  offsetUnit?: ArrowHeadOffsetUnit
   /**
    * Where the drawn line stops: at the head's `'base'` (its back, `size` behind
    * the tip), at its `'tip'`, or `'none'` to draw it whole. Default `'base'`, and
