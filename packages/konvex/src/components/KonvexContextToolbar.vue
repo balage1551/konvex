@@ -1,19 +1,24 @@
 <template>
+  <!--
+    Every element also carries its `eltb-*` name from when this was the
+    EditableLine toolbar, so host CSS written against those keeps applying.
+    @deprecated The `eltb-*` classes; use `kxtb-*`. Removed in 2.0.
+  -->
   <div
     v-if="visible && ctx"
     ref="root"
-    class="kxtb"
+    class="kxtb eltb"
     :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
     @contextmenu.prevent
   >
-    <div v-if="label" class="kxtb-info">{{ label }}</div>
-    <div class="kxtb-row">
+    <div v-if="label" class="kxtb-info eltb-info">{{ label }}</div>
+    <div class="kxtb-row eltb-row">
       <template v-for="(entry, i) in entries" :key="i">
-        <span v-if="entry.kind === 'separator'" class="kxtb-sep" />
+        <span v-if="entry.kind === 'separator'" class="kxtb-sep eltb-sep" />
         <button
           v-else
-          class="kxtb-btn"
-          :class="{ 'kxtb-btn-disabled': entry.state === 'disabled' }"
+          class="kxtb-btn eltb-btn"
+          :class="{ 'kxtb-btn-disabled eltb-btn-disabled': entry.state === 'disabled' }"
           :disabled="entry.state === 'disabled'"
           :title="entry.item.label"
           @click="activate(entry)"
@@ -85,12 +90,12 @@ const entries = computed(() => {
   )
 })
 
-/** Renders an item's `render` union into VNodes (mdi glyph / component / fn). */
+/** Renders an item's `render` union into VNodes (mdi glyph / component / fn). `eltb-icon` is the deprecated alias. */
 const ItemContent = (p: { item: KonvexContextToolbarItem<Ctx>; ctx: Ctx }): VNodeChild => {
   const r = p.item.render
-  if (typeof r === 'string') return h('i', { class: ['kxtb-icon', 'mdi', r] })
+  if (typeof r === 'string') return h('i', { class: ['kxtb-icon', 'eltb-icon', 'mdi', r] })
   if (typeof r === 'function') return r(p.ctx)
-  if ('icon' in r) return h('i', { class: ['kxtb-icon', 'mdi', r.icon, r.class] })
+  if ('icon' in r) return h('i', { class: ['kxtb-icon', 'eltb-icon', 'mdi', r.icon, r.class] })
   return h(r.component, r.props)
 }
 
@@ -202,11 +207,15 @@ defineExpose({ open, hide })
   cursor: default;
 }
 
-.kxtb-btn :deep(.kxtb-icon-danger) {
+/* `eltb-icon-danger`: @deprecated alias of `kxtb-icon-danger`, for custom items
+   written against the old EditableLine toolbar. Removed in 2.0. */
+.kxtb-btn :deep(.kxtb-icon-danger),
+.kxtb-btn :deep(.eltb-icon-danger) {
   color: #be3838;
 }
 
-.kxtb-btn:hover:not(.kxtb-btn-disabled) :deep(.kxtb-icon-danger) {
+.kxtb-btn:hover:not(.kxtb-btn-disabled) :deep(.kxtb-icon-danger),
+.kxtb-btn:hover:not(.kxtb-btn-disabled) :deep(.eltb-icon-danger) {
   color: #ff5050;
 }
 

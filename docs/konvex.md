@@ -473,7 +473,9 @@ An item (`KonvexContextToolbarItem<Ctx>`) has an `id`, an optional `label`
 returning `'hidden'`, `'disabled'` or `'enabled'` (the default), `run(ctx)`, and
 `keepOpen` to leave the bar open after `run`. Hidden items are dropped, and so is
 a divider left with no item on one side. The class `kxtb-icon-danger` paints a
-glyph red. `resolveContextToolbarItems(specs, builtins)` turns a spec list into
+glyph red. Every element also carries its old `eltb-*` class (`eltb`, `eltb-btn`,
+`eltb-icon`, `eltb-icon-danger`, …) from before the toolbar moved to core; those
+are **deprecated** and go in 2.0, so use `kxtb-*`. `resolveContextToolbarItems(specs, builtins)` turns a spec list into
 items and separators for a host drawing its own UI.
 
 ---

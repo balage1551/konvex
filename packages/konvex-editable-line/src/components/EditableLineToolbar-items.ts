@@ -14,6 +14,9 @@ import type {
 } from './EditableLineToolbar-types'
 import type { PointMovement } from '../EditableLine-types'
 
+// Glyphs carry `eltb-icon` beside `kxtb-icon`: @deprecated alias from before the
+// toolbar moved to core, kept so host CSS still matches. Removed in 2.0.
+
 /** Marker returned by {@link resolveToolbarItems} for a divider. */
 export const TOOLBAR_SEPARATOR = CONTEXT_TOOLBAR_SEPARATOR
 export type ToolbarSeparator = typeof TOOLBAR_SEPARATOR
@@ -114,6 +117,7 @@ const toggleClosedItem: EditableLineToolbarItem = {
     h('i', {
       class: [
         'kxtb-icon',
+        'eltb-icon',
         'mdi',
         ctx.line.line.closed.value ? 'mdi-vector-polygon' : 'mdi-vector-polyline',
       ],
@@ -139,6 +143,7 @@ function arrowHeadItem(end: PolylineEnd): EditableLineToolbarItem {
       h('i', {
         class: [
           'kxtb-icon',
+          'eltb-icon',
           'mdi',
           shown(ctx) ? (end === 'start' ? 'mdi-arrow-left' : 'mdi-arrow-right') : 'mdi-minus',
         ],
@@ -207,7 +212,7 @@ const projectionScopeItem: EditableLineToolbarItem = {
   label: 'Where new points land',
   render: ctx => {
     const face = scopeFace(ctx.line.projectionScope.value)
-    return h('i', { class: ['kxtb-icon', 'mdi', face.icon], title: face.title })
+    return h('i', { class: ['kxtb-icon', 'eltb-icon', 'mdi', face.icon], title: face.title })
   },
   keepOpen: true,
   run: ctx => {

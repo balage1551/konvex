@@ -14,3 +14,5 @@ Heads scale with zoom through a new `'decoration'` scalable component. **The def
 New toolbar items `arrow-start` / `arrow-end` flip only a head's `show`, so it comes back as it was. They are disabled where heads are never drawn.
 
 **Core.** `KonvexLine.trimStart` / `trimEnd` leave length undrawn at either end. Only the stroke and its hit region change — `points`, `project`, `pixelLength` and `clientRect` keep the real vertices — and an untrimmed line keeps Konva's own draw. It applies to open straight lines and is ignored by `KonvexArrow`. New pure helpers on flat point lists: `polylineAnchor(flat, end, distance)` (a point along the line from an end, facing out of it) and `trimPolyline(flat, start, end)`.
+
+**Behaviour change.** The new default `scalableComponents` draws nothing different on a line without heads, but code that reads `el.scalableComponents.value` sees `['line', 'decoration']`. `ScalableComponent` gains `'decoration'`, so an exhaustive `switch` over it needs a case for it.
