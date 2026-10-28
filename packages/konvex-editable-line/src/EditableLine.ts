@@ -22,7 +22,7 @@ import {
   type ScalableComponent,
   type ScalableComponents,
 } from './EditableLine-types'
-import { EditableLineEmitter, type EditableLineEventMap } from './EditableLine-events'
+import { EditableLineEmitter, type EditableLineEditSource, type EditableLineEventMap } from './EditableLine-events'
 
 /** Default assist snap distance (world units) when `assist.snapThreshold` is unset. */
 const DEFAULT_SNAP_THRESHOLD = 10
@@ -214,6 +214,8 @@ export class EditableLine extends KonvexGroup {
    * re-positioning handles mid-drag would fight Konva's own drag positioning.
    */
   private _deferredPointsWrite = false
+  /** Who the editing methods report as; `'user'` inside {@link asUser}. */
+  private _source: EditableLineEditSource = 'api'
   private _handles: KonvexRect[] = []
   private _options: (PointOptions | undefined)[]
 
@@ -440,7 +442,7 @@ export class EditableLine extends KonvexGroup {
           this.syncToPoints()
           // Only a write this class did not make gets here unreported: EL's own
           // editing methods emit their precise `point-*` event at the call site.
-          if (foreign) this.events.emit('points-replaced', { count: this.pointCount })
+          if (foreign) this.events.emit('points-replaced', { count: this.pointCount, source: 'api' })
         }
       )
       // Attach/detach stage listeners as the line enters/leaves a stage.
@@ -506,7 +508,7 @@ export class EditableLine extends KonvexGroup {
         if (o.index >= this.pointCount) continue
         const p = this.pointAt(o.index)
         if (p.x !== o.x || p.y !== o.y) {
-          this.events.emit('point-moved', { index: o.index, point: p, from: { x: o.x, y: o.y } })
+          this.events.emit('point-moved', { index: o.index, point: p, from: { x: o.x, y: o.y }, source: 'user' })
         }
       }
       this._dragOrigins = []
@@ -519,7 +521,7 @@ export class EditableLine extends KonvexGroup {
       if (this._deferredPointsWrite) {
         this._deferredPointsWrite = false
         this.syncToPoints()
-        this.events.emit('points-replaced', { count: this.pointCount })
+        this.events.emit('points-replaced', { count: this.pointCount, source: 'api' })
       }
     })
 
@@ -536,11 +538,28 @@ export class EditableLine extends KonvexGroup {
       const p = this.localPointer()
       if (!p) return
       const proj = this.line.project(p, LINE_PROJECTION_SCOPES.internal)
-      if (proj && proj.segment >= 0) this.insertPoint(proj.segment + 1, proj.point)
+      if (proj && proj.segment >= 0) this.asUser(() => this.insertPoint(proj.segment + 1, proj.point))
     })
   }
 
   // --- public editing API ----------------------------------------------------
+
+  /**
+   * Run `fn` with its edits reported as the user's: every `point-*` and
+   * `simplify()`'s `points-replaced` it causes carries `source: 'user'`. For a
+   * host's own UI — a button or menu that edits the line — so its listeners can
+   * tell those edits from the host's programmatic ones. The builtin gestures and
+   * the toolbar already go through it. Nests; returns what `fn` returns.
+   */
+  asUser<T>(fn: () => T): T {
+    const prev = this._source
+    this._source = 'user'
+    try {
+      return fn()
+    } finally {
+      this._source = prev
+    }
+  }
 
   addPoint(p: Vector2d): number {
     return this.insertPoint(this.pointCount, p)
@@ -555,7 +574,7 @@ export class EditableLine extends KonvexGroup {
     this.selection.value = this.selection.value.map(s => (s >= i ? s + 1 : s))
     this.rebuildHandles()
     // Emitted last, so a handler reading the line back sees it settled.
-    this.events.emit('point-added', { index: i, point: { x: p.x, y: p.y }, count: this.pointCount })
+    this.events.emit('point-added', { index: i, point: { x: p.x, y: p.y }, count: this.pointCount, source: this._source })
     return i
   }
 
@@ -568,7 +587,7 @@ export class EditableLine extends KonvexGroup {
     this._options.splice(index, 1)
     this.selection.value = this.selection.value.filter(s => s !== index).map(s => (s > index ? s - 1 : s))
     this.rebuildHandles()
-    this.events.emit('point-removed', { index, point: gone, count: this.pointCount })
+    this.events.emit('point-removed', { index, point: gone, count: this.pointCount, source: this._source })
   }
 
   movePoint(index: number, p: Vector2d): void {
@@ -578,7 +597,7 @@ export class EditableLine extends KonvexGroup {
     this.setPointCoord(index, p.x, p.y)
     const h = this._handles[index]
     if (h) h.position.value = { x: p.x, y: p.y }
-    this.events.emit('point-moved', { index, point: { x: p.x, y: p.y }, from })
+    this.events.emit('point-moved', { index, point: { x: p.x, y: p.y }, from, source: this._source })
   }
 
   select(index: number, opts: { extend?: boolean } = {}): void {
@@ -675,7 +694,7 @@ export class EditableLine extends KonvexGroup {
     this.rebuildHandles()
     // A reshape of the whole polyline: which points survived is not expressible
     // as a sequence of removals, so report it as the replacement it is.
-    this.events.emit('points-replaced', { count: this.pointCount })
+    this.events.emit('points-replaced', { count: this.pointCount, source: this._source })
   }
 
   setPointOptions(index: number, options: PointOptions | undefined): void {
@@ -1313,11 +1332,11 @@ export class EditableLine extends KonvexGroup {
     if (scope.length === 0) return
     const proj = this.line.project(p, scope)
     if (!proj) {
-      this.addPoint(p)
+      this.asUser(() => this.addPoint(p))
       return
     }
     const { index, point } = this.resolveInsertion(p, proj)
-    this.insertPoint(index, point)
+    this.asUser(() => this.insertPoint(index, point))
   }
 
   /**

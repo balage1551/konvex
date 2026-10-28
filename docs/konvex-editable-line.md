@@ -125,6 +125,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `insertPoint(index, p, options?): number` | Insert at `index` with optional per-point options. |
 | `removePoint(index)` | Remove one point. |
 | `movePoint(index, p)` | Move a point to `p`. |
+| `asUser(fn): T` | Run `fn` with its edits reported as `source: 'user'` — for a host's own buttons and menus. Nests; returns `fn`'s result. See [Point events](#point-events). |
 | `select(index, { extend? })` | Select a point (or toggle-extend with `extend: true`). |
 | `clearSelection()` | Deselect all. |
 | `removeSelected()` | Remove every selected point. |
@@ -367,20 +368,33 @@ every one is emitted *after* the edit has settled: a handler can read
 
 | Event | Payload | Fired by |
 | --- | --- | --- |
-| `point-added` | `{ index, point, count }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
-| `point-removed` | `{ index, point, count }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
-| `point-moved` | `{ index, point, from }` | a drag (**on release**), `movePoint`, `straightenSelection` |
+| `point-added` | `{ index, point, count, source }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
+| `point-removed` | `{ index, point, count, source }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
+| `point-moved` | `{ index, point, from, source }` | a drag (**on release**), `movePoint`, `straightenSelection` |
 | `point-drag-start` | `{ index, indices, from }` — `index` is the anchor, `indices` every point moving with it | a handle drag starting |
 | `point-moving` | `{ index, point, from }` — the anchor, axis constraints applied | a handle drag, **every frame** |
 | `point-drag-end` | `{ index, point, from, cancelled }` | a handle drag ending, **before** its `point-moved` |
-| `points-replaced` | `{ count }` | a write to `line.points`, or `simplify()` — **deferred to the drag end** if it arrives mid-drag |
+| `points-replaced` | `{ count, source }` | a write to `line.points`, or `simplify()` — **deferred to the drag end** if it arrives mid-drag |
 
 ```ts
 el.events.on('point-moved', ({ index, point }) => store.commit(index, point))
 el.events.on('points-replaced', () => store.reload(el.pointInfos.value))
 ```
 
-Three things worth knowing:
+`source` says who made the edit: `'user'` for a gesture on the line — a drag, a
+click or double-click that adds a point, a toolbar item — and for anything run
+inside `el.asUser(fn)`; `'api'` for every other call into the editing methods. A
+host that moves line ends programmatically (to follow a node) can skip its own
+echoes without diffing. A write to `line.points` is always `'api'`, even inside
+`asUser`: it is noticed on the next flush, after the code that made it has
+returned.
+
+```ts
+el.events.on('point-moved', e => { if (e.source === 'user') store.markDirty() })
+myButton.onclick = () => el.asUser(() => el.removePoint(2)) // reported as 'user'
+```
+
+Things worth knowing:
 
 - **A drag reports once, when it lands.** `point-moved` is a settled fact, not a
   stream: no event per frame, and `from` is where the drag *started*, so the

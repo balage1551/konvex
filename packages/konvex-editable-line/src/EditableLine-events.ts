@@ -29,6 +29,14 @@ export interface EditableLineToolbarRequest {
 }
 
 /**
+ * Who made an edit: `'user'` for a gesture on the line (a drag, a click or
+ * double-click that adds a point, a toolbar item) or code run through
+ * {@link EditableLine.asUser}; `'api'` for any other call into the editing
+ * methods, and for every write to `line.points`.
+ */
+export type EditableLineEditSource = 'user' | 'api'
+
+/**
  * A point joined or left the line.
  *
  * The line's points are what an `EditableLine` manages, so these are its
@@ -43,6 +51,7 @@ export interface EditableLinePointChange {
   point: Vector2d
   /** Point count *after* the change. */
   count: number
+  source: EditableLineEditSource
 }
 
 /**
@@ -58,6 +67,7 @@ export interface EditableLinePointMove {
   point: Vector2d
   /** Where it was before the move — for a drag, where the drag started. */
   from: Vector2d
+  source: EditableLineEditSource
 }
 
 /**
@@ -107,6 +117,12 @@ export interface EditableLinePointDragEnd {
  */
 export interface EditableLinePointsReplaced {
   count: number
+  /**
+   * `'user'` only for a `simplify()` the user asked for. A write to
+   * `line.points` is always `'api'`: it is noticed after the fact, when the
+   * code that made it is no longer running.
+   */
+  source: EditableLineEditSource
 }
 
 /** The discrete (non-Konva) events an {@link EditableLine} emits. */

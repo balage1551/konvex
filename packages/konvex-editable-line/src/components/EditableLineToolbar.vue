@@ -2,8 +2,8 @@
   <KonvexContextToolbar
     ref="bar"
     :context="context"
-    :items="items"
-    :builtins="BUILTIN_TOOLBAR_ITEMS"
+    :items="userItems"
+    :builtins="userBuiltins"
     :label="label"
   />
 </template>
@@ -11,12 +11,12 @@
 <script setup lang="ts">
 // konvex's context toolbar, specialised to an EditableLine: it opens on the
 // line's `toolbar-request` and hands the items an EditableLineToolbarContext.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { KonvexContextToolbar } from '@balage1551/konvex'
 import type { EditableLine } from '../EditableLine'
 import type { EditableLineToolbarRequest } from '../EditableLine-events'
 import { BUILTIN_TOOLBAR_ITEMS, DEFAULT_TOOLBAR_ITEMS } from './EditableLineToolbar-items'
-import type { EditableLineToolbarContext, ToolbarItemSpec } from './EditableLineToolbar-types'
+import type { EditableLineToolbarContext, EditableLineToolbarItem, ToolbarItemSpec } from './EditableLineToolbar-types'
 
 const props = withDefaults(
   defineProps<{
@@ -28,6 +28,14 @@ const props = withDefaults(
   }>(),
   { items: () => DEFAULT_TOOLBAR_ITEMS, label: undefined },
 )
+
+// A click on an item is the user's edit, so its point events say `source: 'user'`.
+function asUser(item: EditableLineToolbarItem): EditableLineToolbarItem {
+  const run = item.run
+  return run ? { ...item, run: ctx => ctx.line.asUser(() => run(ctx)) } : item
+}
+const userBuiltins = Object.fromEntries(Object.entries(BUILTIN_TOOLBAR_ITEMS).map(([id, item]) => [id, asUser(item)]))
+const userItems = computed(() => props.items.map(spec => (typeof spec === 'string' ? spec : asUser(spec))))
 
 const bar = ref<{ open: (req: EditableLineToolbarRequest) => void; hide: () => void } | null>(null)
 
