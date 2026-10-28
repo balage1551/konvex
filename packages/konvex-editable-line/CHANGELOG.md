@@ -1,5 +1,42 @@
 # @balage1551/konvex-editable-line
 
+## 1.5.0
+
+### Minor Changes
+
+- 6479658: Move the toolbar item framework into core as `<KonvexContextToolbar>`, generic over the context its items see: `KonvexContextToolbarItem<Ctx>`, `ContextToolbarItemState`, `ContextToolbarItemRender<Ctx>`, `ContextToolbarItemSpec<Ctx>` and `resolveContextToolbarItems(specs, builtins)`. Any node can open it: set `contextRequest` (config or ref, default `false`) and a right-click suppresses the browser's menu and emits a `context-request` signal `{ node, pointerScreen, pointerWorld }`. The bar can also be opened from any other source through its exposed `open(request)`.
+
+  `EditableLineToolbar` is now this component specialised to a line, and the EL item types are aliases of the core ones, so existing code compiles unchanged. The toolbar's CSS classes are renamed from `eltb-*` to `kxtb-*`. The old names are still emitted beside the new ones and `eltb-icon-danger` still paints a glyph red, so host CSS and custom items keep working — but the `eltb-*` classes are **deprecated** and will be removed in 2.0; switch to `kxtb-*` (e.g. `kxtb-icon-danger`).
+
+- a63a51a: Add arrowheads to `EditableLine`, and the render-only line trimming they rest on.
+
+  **Arrowheads.** `startHead` / `endHead` (config and live refs) put a head on either end. Built-in shapes are `triangle`, `open` (two strokes meeting at the tip — not an unfilled triangle), `diamond` and `circle`; a factory can return any konvex shape or group instead, drawn in a tip-at-origin frame that EL places and rotates. `size` is the extent along the line and `ratio` (length ÷ width) shapes every head alike. `offset` holds the tip clear of a circular object sitting on the end point, measured along the line, so it carries on round a corner. It is in world units, or in screen pixels at any zoom with `offsetUnit: 'screen'` — for an end object that keeps a constant on-screen size. A hidden head (`show: false`) still keeps the line `offset` short of its end unless `trim: 'none'`, so an end with an object but no head needs no invisible head. `atEveryPoint` repeats a head at every internal point as well, on that point's own segment — an end head on the segment arriving there, pointing forward; a start head on the one leaving, pointing back — with the line running through them. Paint is konvex's structured `fill` / `stroke`, defaulting to the line's stroke colour (filled shapes) or its stroke (`open`); a given `stroke` is merged field by field over the line's.
+
+  The line is shortened under a head — to its base by default, to its tip for `open` — so a thick stroke no longer shows past the tip, and the line stops at the object rather than running under it. Heads are part of the line for interaction: right-click asks for the toolbar and Alt+click commits, as on the line itself. They are not drawn on a closed or curved (`tension` / `bezier`) line, nor when the two would not both fit; in that case the line still stops at the offsets.
+
+  Heads scale with zoom through a new `'decoration'` scalable component. **The default `scalableComponents` is now `['line', 'decoration']`** (was `['line']`), which changes nothing for a line without heads. A host that passes its own list and wants heads to scale should add `'decoration'`; without it, `size` is in screen pixels.
+
+  New toolbar items `arrow-start` / `arrow-end` flip only a head's `show`, so it comes back as it was. They are disabled where heads are never drawn.
+
+  **Core.** `KonvexLine.trimStart` / `trimEnd` leave length undrawn at either end. Only the stroke and its hit region change — `points`, `project`, `pixelLength` and `clientRect` keep the real vertices — and an untrimmed line keeps Konva's own draw. It applies to open straight lines and is ignored by `KonvexArrow`. New pure helpers on flat point lists: `polylineAnchor(flat, end, distance)` (a point along the line from an end, facing out of it) and `trimPolyline(flat, start, end)`.
+
+  **Behaviour change.** The new default `scalableComponents` draws nothing different on a line without heads, but code that reads `el.scalableComponents.value` sees `['line', 'decoration']`. `ScalableComponent` gains `'decoration'`, so an exhaustive `switch` over it needs a case for it.
+
+- 8f6d9d6: Stream handle drags: `point-drag-start { index, indices, from }`, `point-moving { index, point, from }` every frame for the anchor point, and `point-drag-end { index, point, from, cancelled }` before the drag's `point-moved`. `cancelled` is `true` when a point added or removed mid-drag cut the drag short.
+- e921c46: Tag point events with who made the edit. `point-added`, `point-removed`, `point-moved` and `points-replaced` carry `source: 'user' | 'api'`: `'user'` for a drag, a click or double-click that adds a point, a toolbar item, or anything run inside the new `asUser(fn)`; `'api'` for other calls into the editing methods and for every write to `line.points`. A host whose own UI edits the line wraps it in `asUser` to have those edits reported as the user's.
+
+  **Behaviour change.** `source` is a required field on `EditableLinePointChange`, `EditableLinePointMove` and `EditableLinePointsReplaced`, so code that _builds_ these payloads (a test mock, a re-emitter) must now supply it; listeners are unaffected.
+
+- 77dc44c: Add `hitTolerance` (config and live ref, default `2`): extra screen pixels on each side of the stroke that still count as a click on the line, at any zoom. It sets the line's `hitStrokeWidth`, and is ignored when `line` gives its own.
+
+  **Behaviour change.** The default applies to existing lines too: every line's click area grows by 2 screen pixels on each side of the stroke. Pass `hitTolerance: 0` for the old hit region, or set `line.hitStrokeWidth` yourself.
+
+- c983537: `toolbar-request` and `EditableLineToolbarContext` carry `hit`: `{ kind: 'point', index }` for a right-clicked handle, even one that is not selectable, or `{ kind: 'line', segment, proportion }` for the line or an arrowhead, from the body projection. Toolbar items' `state()` and `run()` can now depend on what was clicked.
+
+  The builtin point items — the six aligns, `straighten` and `delete` — are now hidden when the toolbar is opened from the line body rather than a point, and the toolbar drops a divider left with no item on one side.
+
+  **Behaviour change.** Right-clicking the line body no longer offers the point items: the six aligns, `straighten` and `delete` now appear only when a point was right-clicked. They acted on the selection, which a line-body click does not change. A host that wants them there anyway can pass its own items with a `state()` that ignores `hit`. `hit` is a required field on `EditableLineToolbarRequest` and `EditableLineToolbarContext`, so code that _builds_ one of these (a test mock, a manual `open(request)`) must now supply it; listeners are unaffected.
+
 ## 1.4.0
 
 ### Patch Changes
