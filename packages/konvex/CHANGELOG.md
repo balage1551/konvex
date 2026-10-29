@@ -1,5 +1,11 @@
 # @balage1551/konvex
 
+## 1.5.2
+
+### Patch Changes
+
+- 6f0bc93: `KonvexText.textHeight` now measures every wrapped line at `fontSize × lineHeight` (without padding) instead of reporting one line's height.
+
 ## 1.5.1
 
 ### Patch Changes
