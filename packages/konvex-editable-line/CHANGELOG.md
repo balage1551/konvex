@@ -1,5 +1,7 @@
 # @balage1551/konvex-editable-line
 
+## 1.5.1
+
 ## 1.5.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @balage1551/konvex
 
+## 1.5.1
+
+### Patch Changes
+
+- 6a0826d: `textHeight` on `KonvexText` and `KonvexTextPath` no longer triggers Konva's `getTextHeight()` deprecation warning.
+
 ## 1.5.0
 
 ### Minor Changes
