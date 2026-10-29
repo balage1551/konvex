@@ -143,7 +143,7 @@ export class KonvexText extends KonvexShape<Konva.Text> {
       ],
     })
     this.textHeight = readonlyNodeAttr(this._node, {
-      read: n => n.getTextHeight(),
+      read: n => n.textHeight,
       syncOn: [
         'textChange', 'fontSizeChange', 'fontFamilyChange', 'fontStyleChange',
         'lineHeightChange', 'widthChange', 'wrapChange', 'paddingChange',
@@ -164,8 +164,8 @@ export class KonvexText extends KonvexShape<Konva.Text> {
   /**
    * With `width`/`height` left unset Konva measures the text instead, so the box
    * follows the glyphs. Listed as the source attributes rather than via
-   * `textWidth`/`textHeight`: those are convenient, but `textHeight` calls a
-   * Konva method that warns as deprecated, and this runs on every box read.
+   * `textWidth`/`textHeight`, so the dependencies are explicit and nothing is
+   * re-measured on every box read.
    */
   protected override trackGeometry(): void {
     super.trackGeometry()

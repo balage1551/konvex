@@ -121,7 +121,7 @@ export class KonvexTextPath extends KonvexShape<Konva.TextPath> {
       syncOn: ['textChange', 'fontSizeChange', 'fontFamilyChange', 'fontStyleChange', 'letterSpacingChange'],
     })
     this.textHeight = readonlyNodeAttr(this._node, {
-      read: n => n.getTextHeight(),
+      read: n => n.textHeight,
       syncOn: ['textChange', 'fontSizeChange', 'fontFamilyChange', 'fontStyleChange'],
     })
 
