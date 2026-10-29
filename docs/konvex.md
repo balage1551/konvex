@@ -615,7 +615,8 @@ Config: `text?`, `font?: Font`, `paragraph?: TextParagraph`.
 Facets: `font` (`fontFamily`, `fontSize`, `fontStyle`, `fontVariant`,
 `textDecoration`), `paragraph` (`align`, `verticalAlign`, `padding`,
 `lineHeight`, `letterSpacing`, `wrap`, `ellipsis`, `direction`) — plus a flat ref
-per field. Read-only: `textWidth`, `textHeight`.
+per field. Read-only: `textWidth`, `textHeight` (the measured text block:
+widest line × all wrapped lines at `fontSize × lineHeight`, without padding).
 
 ### `KonvexTextPath`
 Text along an SVG path. Config: `text?`, `data?`, `font?: Font`,

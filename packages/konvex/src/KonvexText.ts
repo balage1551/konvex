@@ -143,10 +143,12 @@ export class KonvexText extends KonvexShape<Konva.Text> {
       ],
     })
     this.textHeight = readonlyNodeAttr(this._node, {
-      read: n => n.textHeight,
+      // All wrapped lines, as Konva sizes an auto-height text (without padding,
+      // like `textWidth`). Konva's own `textHeight` field is one line's height.
+      read: n => n.textArr.length * n.fontSize() * n.lineHeight(),
       syncOn: [
         'textChange', 'fontSizeChange', 'fontFamilyChange', 'fontStyleChange',
-        'lineHeightChange', 'widthChange', 'wrapChange', 'paddingChange',
+        'lineHeightChange', 'widthChange', 'heightChange', 'wrapChange', 'paddingChange',
       ],
     })
 
