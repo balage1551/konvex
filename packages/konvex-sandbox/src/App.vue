@@ -1102,6 +1102,7 @@ const toolbarItems: ToolbarItemSpec[] = [
   '|',
   'straighten',
   'simplify',
+  'tidy',
   'toggle-closed',
   'arrow-start',
   'arrow-end',

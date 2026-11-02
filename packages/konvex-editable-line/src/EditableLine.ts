@@ -2,7 +2,7 @@ import { computed, type ComputedRef, customRef, ref, type Ref, watch } from 'vue
 import type Konva from 'konva'
 import { KonvexGroup } from '@balage1551/konvex'
 import { KonvexLine, type LineProjection } from '@balage1551/konvex'
-import { type SimplificationThreshold, simplifyPoints, straightenPoints } from '@balage1551/konvex'
+import { type SimplificationThreshold, simplifyPoints, straightenPoints, tidyPoints } from '@balage1551/konvex'
 import { KonvexCircle } from '@balage1551/konvex'
 import { KonvexEllipse } from '@balage1551/konvex'
 import { KonvexRect } from '@balage1551/konvex'
@@ -641,6 +641,25 @@ export class EditableLine extends KonvexGroup {
         x: mv === 'y' ? now.x : out[k].x,
         y: mv === 'x' ? now.y : out[k].y,
       })
+    }
+  }
+
+  /**
+   * Tidy the whole polyline in place without removing points: runs of points
+   * within `maxAngle` degrees (default 5) of horizontal or vertical are snapped
+   * onto one shared y or x (see {@link tidyPoints}). Pinned points stay put and
+   * an `'x'`/`'y'` point only changes the coordinate it may move along.
+   */
+  tidy(maxAngle = 5): void {
+    if (this.pointCount < 2) return
+    const pts: Vector2d[] = []
+    for (let i = 0; i < this.pointCount; i++) pts.push(this.pointAt(i))
+    const out = tidyPoints(pts, maxAngle, (i, axis) => {
+      const mv = this.effectiveMovable(i)
+      return mv === 'free' || mv === axis
+    })
+    for (let i = 0; i < out.length; i++) {
+      if (out[i].x !== pts[i].x || out[i].y !== pts[i].y) this.movePoint(i, out[i])
     }
   }
 

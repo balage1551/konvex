@@ -108,6 +108,15 @@ const simplifyItem: EditableLineToolbarItem = {
   run: ctx => ctx.line.simplify(),
 }
 
+/** Tidy: square near-horizontal/vertical runs onto their axis, keeping every point. */
+const tidyItem: EditableLineToolbarItem = {
+  id: 'tidy',
+  label: 'Tidy',
+  render: { icon: 'mdi-ruler-square' },
+  state: ctx => (ctx.line.pointCount >= 2 ? 'enabled' : 'disabled'),
+  run: ctx => ctx.line.tidy(),
+}
+
 /** Toggle the line's `closed` flag — a selection-independent example item. */
 const toggleClosedItem: EditableLineToolbarItem = {
   id: 'toggle-closed',
@@ -270,6 +279,7 @@ export const BUILTIN_TOOLBAR_ITEMS: Readonly<Record<string, EditableLineToolbarI
   ),
   straighten: straightenItem,
   simplify: simplifyItem,
+  tidy: tidyItem,
   delete: deleteItem,
   'toggle-closed': toggleClosedItem,
   'projection-scope': projectionScopeItem,
@@ -288,6 +298,7 @@ export const DEFAULT_TOOLBAR_ITEMS: ToolbarItemSpec[] = [
   '|',
   'straighten',
   'simplify',
+  'tidy',
   '|',
   'delete',
 ]

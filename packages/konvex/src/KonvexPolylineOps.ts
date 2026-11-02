@@ -60,6 +60,66 @@ export function straightenPoints(points: Vector2d[]): Vector2d[] {
   )
 }
 
+/** Which axis a point-to-point vector runs along, if within `maxAngleDeg` of one. */
+function nearAxis(a: Vector2d, b: Vector2d, maxAngleDeg: number): 'h' | 'v' | 'any' | null {
+  const dx = Math.abs(b.x - a.x)
+  const dy = Math.abs(b.y - a.y)
+  if (dx === 0 && dy === 0) return 'any' // coincident: lies on either axis
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI // 0 = horizontal, 90 = vertical
+  if (deg <= maxAngleDeg) return 'h'
+  if (90 - deg <= maxAngleDeg) return 'v'
+  return null
+}
+
+/**
+ * Tidy a hand-drawn polyline without removing any point: snap near-horizontal and
+ * near-vertical runs exactly onto their axis.
+ *
+ * Walking from each point, it takes as many *following* points as lie within a
+ * cone of `maxAngleDeg` (default 5°) around the horizontal or vertical through it
+ * — the axis is set by the first follower — and gives the whole run the centre
+ * (midpoint of min/max) of its y (horizontal) or x (vertical). The next run starts
+ * at the last point of this one, so a corner point can be squared on both axes.
+ *
+ * `canMove(index, axis)` says whether a point may change that coordinate; a point
+ * that may not keeps its value, and the run is centred on the fixed points only.
+ * Returns a new array of the same length; input is not mutated.
+ */
+export function tidyPoints(
+  points: Vector2d[],
+  maxAngleDeg = 5,
+  canMove: (index: number, axis: 'x' | 'y') => boolean = () => true,
+): Vector2d[] {
+  const out = points.map(p => ({ x: p.x, y: p.y }))
+  let i = 0
+  while (i < out.length - 1) {
+    let axis: 'h' | 'v' | null = null
+    let j = i + 1
+    for (; j < out.length; j++) {
+      const a = nearAxis(out[i], out[j], maxAngleDeg)
+      if (a === null) break
+      if (a === 'any') continue
+      if (axis === null) axis = a
+      else if (a !== axis) break
+    }
+    const last = j - 1
+    if (last === i || axis === null) {
+      i++
+      continue
+    }
+    // A horizontal run shares one y; a vertical run one x.
+    const coord = axis === 'h' ? 'y' : 'x'
+    const run: number[] = []
+    for (let k = i; k <= last; k++) run.push(k)
+    const fixed = run.filter(k => !canMove(k, coord))
+    const basis = (fixed.length ? fixed : run).map(k => out[k][coord])
+    const target = (Math.min(...basis) + Math.max(...basis)) / 2
+    for (const k of run) if (canMove(k, coord)) out[k][coord] = target
+    i = last
+  }
+  return out
+}
+
 /** Thresholds for {@link simplifyPoints}. */
 export interface SimplificationThreshold {
   /**

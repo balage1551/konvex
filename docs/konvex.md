@@ -664,6 +664,9 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
   onto the line through them.
 - `simplifyPoints(points, threshold?): Vector2d[]` — drop near-collinear points,
   then merge dense clusters to their centroid.
+- `tidyPoints(points, maxAngleDeg = 5, canMove?): Vector2d[]` — keep every
+  point; snap runs within `maxAngleDeg` of horizontal/vertical onto one shared
+  y/x (the centre of the run). `canMove(index, axis)` keeps a point's coordinate.
 - `SimplificationThreshold` `{ angle?: number (deg, default 5), distance?: number (default 10) }`;
   `DEFAULT_SIMPLIFICATION` holds the resolved defaults.
 

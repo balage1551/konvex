@@ -131,6 +131,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `removeSelected()` | Remove every selected point. |
 | `straightenSelection()` | Project the intermediate **selected** points onto the line through the first/last selected. `movable: false` points stay; an `'x'`/`'y'` point moves only along its own axis. No-op for < 3 selected. |
 | `simplify(threshold?)` | Simplify the whole polyline in place. Endpoints and `movable: false` points keep their exact positions (each run between pins is simplified on its own) and pinned points keep their overrides; the selection and every other override are cleared, since indices change. No-op for < 3 points. |
+| `tidy(maxAngle?)` | Square up a hand-drawn line without removing points: from each point, the following points within `maxAngle` degrees (default 5) of horizontal or vertical get the centre of their y (or x). `movable: false` points stay; an `'x'`/`'y'` point changes only its own axis (a run with fixed points is centred on them). No-op for < 2 points. |
 | `setPointOptions(index, options)` | Set/override per-point `movable`/`selectable`. |
 | `destroy()` | Tear down (also removes window/key listeners). |
 
@@ -259,7 +260,7 @@ const items: ToolbarItemSpec[] = [
 
 `align-h-start`, `align-h-center`, `align-h-end`,
 `align-v-start`, `align-v-center`, `align-v-end`,
-`straighten`, `simplify`, `toggle-closed`, `projection-scope`, `arrow-start`,
+`straighten`, `simplify`, `tidy`, `toggle-closed`, `projection-scope`, `arrow-start`,
 `arrow-end`, `delete`.
 
 The point items — the six aligns, `straighten` and `delete` — are hidden when the
@@ -302,7 +303,7 @@ and friends do what they are told. The scope governs pointer gestures and
 projection, not what the host asks for directly.
 
 Divider tokens: `'|'` or `'separator'`. `DEFAULT_TOOLBAR_ITEMS` is the six
-aligns + `straighten`/`simplify` + `delete`. `BUILTIN_TOOLBAR_ITEMS` is the
+aligns + `straighten`/`simplify`/`tidy` + `delete`. `BUILTIN_TOOLBAR_ITEMS` is the
 `id → item` registry; `resolveToolbarItems(specs)` turns a spec list into
 concrete items/separators (unknown ids are warned and skipped).
 
@@ -370,7 +371,7 @@ every one is emitted *after* the edit has settled: a handler can read
 | --- | --- | --- |
 | `point-added` | `{ index, point, count, source }` | `addPoint`, `insertPoint`, and the click/double-click add gestures |
 | `point-removed` | `{ index, point, count, source }` — `point` is where it *was* | `removePoint`, `removeSelected` (one per point, highest index first) |
-| `point-moved` | `{ index, point, from, source }` | a drag (**on release**), `movePoint`, `straightenSelection` |
+| `point-moved` | `{ index, point, from, source }` | a drag (**on release**), `movePoint`, `straightenSelection`, `tidy` |
 | `point-drag-start` | `{ index, indices, from }` — `index` is the anchor, `indices` every point moving with it | a handle drag starting |
 | `point-moving` | `{ index, point, from }` — the anchor, axis constraints applied | a handle drag, **every frame** |
 | `point-drag-end` | `{ index, point, from, cancelled }` | a handle drag ending, **before** its `point-moved` |
