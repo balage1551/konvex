@@ -1,5 +1,11 @@
 # @balage1551/konvex
 
+## 1.6.0
+
+### Minor Changes
+
+- 39b7d4e: Add `tidyPoints()` and `EditableLine.tidy()` with a `tidy` toolbar item: snaps near-horizontal and near-vertical runs (within 5°) of a hand-drawn line exactly onto their axis, without removing any point.
+
 ## 1.5.2
 
 ### Patch Changes
