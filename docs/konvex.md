@@ -666,7 +666,9 @@ Standalone functions (pure; inputs not mutated) from `@balage1551/konvex`:
   then merge dense clusters to their centroid.
 - `tidyPoints(points, maxAngleDeg = 5, canMove?): Vector2d[]` — keep every
   point; snap runs within `maxAngleDeg` of horizontal/vertical onto one shared
-  y/x (the centre of the run). `canMove(index, axis)` keeps a point's coordinate.
+  y/x (the centre of the run). A point joins a run only if both the chord from the
+  run's start and the step from the previous point lie within the cone, so a short
+  jog after a long leg is squared, not flattened. `canMove(index, axis)` keeps a point's coordinate.
 - `SimplificationThreshold` `{ angle?: number (deg, default 5), distance?: number (default 10) }`;
   `DEFAULT_SIMPLIFICATION` holds the resolved defaults.
 

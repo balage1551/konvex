@@ -131,7 +131,7 @@ Extends `KonvexGroupConfig`. Fields:
 | `removeSelected()` | Remove every selected point. |
 | `straightenSelection()` | Project the intermediate **selected** points onto the line through the first/last selected. `movable: false` points stay; an `'x'`/`'y'` point moves only along its own axis. No-op for < 3 selected. |
 | `simplify(threshold?)` | Simplify the whole polyline in place. Endpoints and `movable: false` points keep their exact positions (each run between pins is simplified on its own) and pinned points keep their overrides; the selection and every other override are cleared, since indices change. No-op for < 3 points. |
-| `tidy(maxAngle?)` | Square up a hand-drawn line without removing points: from each point, the following points within `maxAngle` degrees (default 5) of horizontal or vertical get the centre of their y (or x). `movable: false` points stay; an `'x'`/`'y'` point changes only its own axis (a run with fixed points is centred on them). No-op for < 2 points. |
+| `tidy(maxAngle?)` | Square up a hand-drawn line without removing points: from each point, the following points within `maxAngle` degrees (default 5) of horizontal or vertical (measured from that point *and* from the previous one, so a short jog after a long leg isn't flattened) get the centre of their y (or x). `movable: false` points stay; an `'x'`/`'y'` point changes only its own axis (a run with fixed points is centred on them). No-op for < 2 points. |
 | `setPointOptions(index, options)` | Set/override per-point `movable`/`selectable`. |
 | `destroy()` | Tear down (also removes window/key listeners). |
 

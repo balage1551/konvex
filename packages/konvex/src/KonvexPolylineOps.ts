@@ -77,7 +77,9 @@ function nearAxis(a: Vector2d, b: Vector2d, maxAngleDeg: number): 'h' | 'v' | 'a
  *
  * Walking from each point, it takes as many *following* points as lie within a
  * cone of `maxAngleDeg` (default 5°) around the horizontal or vertical through it
- * — the axis is set by the first follower — and gives the whole run the centre
+ * — the axis is set by the first follower — and whose step from the previous
+ * point also runs along that axis, so a short jog ends the run even when it is
+ * still inside the cone of a long leg. The whole run gets the centre
  * (midpoint of min/max) of its y (horizontal) or x (vertical). The next run starts
  * at the last point of this one, so a corner point can be squared on both axes.
  *
@@ -96,11 +98,15 @@ export function tidyPoints(
     let axis: 'h' | 'v' | null = null
     let j = i + 1
     for (; j < out.length; j++) {
+      // Both the chord from the run's start *and* the step from the previous
+      // point must lie on the axis. The chord alone lets a short jog after a long
+      // leg (e.g. 90 px after 1080 px is under 5°) join the run and be flattened
+      // away; the step alone would let a gradual drift accumulate unchecked.
       const a = nearAxis(out[i], out[j], maxAngleDeg)
-      if (a === null) break
-      if (a === 'any') continue
-      if (axis === null) axis = a
-      else if (a !== axis) break
+      const step = nearAxis(out[j - 1], out[j], maxAngleDeg)
+      if (a === null || step === null) break
+      if (axis === null && a !== 'any') axis = a
+      if (axis !== null && ((a !== 'any' && a !== axis) || (step !== 'any' && step !== axis))) break
     }
     const last = j - 1
     if (last === i || axis === null) {
