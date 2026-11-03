@@ -1,5 +1,11 @@
 # @balage1551/konvex
 
+## 1.6.1
+
+### Patch Changes
+
+- 0c00640: `tidyPoints` / `EditableLine.tidy()` no longer flatten a short jog that follows a long leg. A point now joins a run only when the step from the previous point also runs along the run's axis, not just the chord from the run's first point (a 90 px jog after a 1080 px leg is under 5° and used to collapse the rest of the line onto the leg).
+
 ## 1.6.0
 
 ### Minor Changes
